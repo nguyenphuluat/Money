@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F4F6F8">
+  <title>Sổ Chi Tiêu Gia Đình</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+  <!-- ===== Đăng nhập ===== -->
+  <div class="login-shell" id="loginView" hidden>
+    <main class="login-card">
+      <div class="login-brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg class="od-icon" style="--od-icon-size:22px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2v17.6"/><path d="M16.4 7.1c-.8-1.2-2.1-1.9-3.9-1.9-2.4 0-4.1 1.2-4.1 3.1 0 1.9 1.7 2.7 4.1 3.3 2.5.6 4.3 1.4 4.3 3.4 0 2-1.8 3.3-4.5 3.3-1.9 0-3.4-.8-4.3-2.1"/></svg>
+        </span>
+        <div>
+          <h1 class="login-title">Sổ Chi Tiêu</h1>
+          <p class="login-sub">Gia đình mình</p>
+        </div>
+      </div>
+
+      <form class="login-form" id="loginForm" novalidate>
+        <div class="field">
+          <label for="loginEmail">Email hoặc tên đăng nhập</label>
+          <input class="input" id="loginEmail" type="text" placeholder="minh@giadinh.vn" autocomplete="username" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="loginPass">Mật khẩu</label>
+          <input class="input" id="loginPass" type="password" placeholder="••••••" autocomplete="current-password">
+        </div>
+        <div class="form-alert" id="loginAlert" role="alert" hidden>
+          <svg class="od-icon" style="--od-icon-size:16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 3.2 20h17.6L12 4Z"/><path d="M12 10.2v4"/><path d="M12 17.3v.1"/></svg>
+          <span>Email hoặc mật khẩu không đúng.</span>
+        </div>
+        <button class="btn btn--primary btn--block" id="loginBtn" type="submit">Đăng nhập</button>
+        <div class="login-row" style="justify-content:center">
+          <button class="btn btn--ghost btn--sm" type="button" data-act="forgot" style="color:var(--teal)">Quên mật khẩu?</button>
+        </div>
+      </form>
+
+      <p class="login-hint">
+        Sổ dùng chung cho hai người. Tài khoản nằm trong tab <b>members</b> của Google Sheet:
+        mở Sheet để xem tên đăng nhập và đổi mật khẩu ở cột <b>password</b>.
+      </p>
+    </main>
+  </div>
+
+  <!-- ===== Ứng dụng ===== -->
+  <div class="app" id="appView" hidden>
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2v17.6"/><path d="M16.4 7.1c-.8-1.2-2.1-1.9-3.9-1.9-2.4 0-4.1 1.2-4.1 3.1 0 1.9 1.7 2.7 4.1 3.3 2.5.6 4.3 1.4 4.3 3.4 0 2-1.8 3.3-4.5 3.3-1.9 0-3.4-.8-4.3-2.1"/></svg>
+        </span>
+        <span class="brand-text">
+          <span class="brand-name">Sổ Chi Tiêu</span>
+          <span class="brand-sub">Gia đình mình</span>
+        </span>
+      </div>
+      <nav class="side-nav" id="sideNav" aria-label="Điều hướng chính"></nav>
+      <button class="side-user" id="sideUser" type="button" data-act="open-account" aria-label="Mở tài khoản"></button>
+    </aside>
+
+    <div class="app-body">
+      <header class="topbar">
+        <div class="brand brand--compact">
+          <span class="brand-mark" aria-hidden="true">
+            <svg class="od-icon" style="--od-icon-size:18px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2v17.6"/><path d="M16.4 7.1c-.8-1.2-2.1-1.9-3.9-1.9-2.4 0-4.1 1.2-4.1 3.1 0 1.9 1.7 2.7 4.1 3.3 2.5.6 4.3 1.4 4.3 3.4 0 2-1.8 3.3-4.5 3.3-1.9 0-3.4-.8-4.3-2.1"/></svg>
+          </span>
+          <span class="brand-text">
+            <span class="brand-name">Sổ Chi Tiêu</span>
+            <span class="brand-sub">Gia đình mình</span>
+          </span>
+        </div>
+        <button class="avatar-btn" id="topAvatar" type="button" data-act="open-account" aria-label="Mở tài khoản"></button>
+      </header>
+
+      <main class="content" id="content" tabindex="-1"></main>
+
+      <nav class="tabbar" id="tabbar" aria-label="Điều hướng chính"></nav>
+    </div>
+  </div>
+
+  <!-- ===== Thêm thu nhập ===== -->
+  <dialog class="sheet" id="incomeSheet" aria-labelledby="incomeTitle">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div>
+        <h2 id="incomeTitle">Thêm thu nhập</h2>
+        <p class="sheet-sub" id="incomeSheetSub">Khoản tiền này sẽ cộng vào số dư chung.</p>
+      </div>
+      <button class="btn-icon" type="button" data-close aria-label="Đóng">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <form id="incomeForm" class="sheet-form" novalidate>
+      <div class="sheet-body">
+        <div class="field">
+          <label for="incAmount">Số tiền</label>
+          <div class="amount-field">
+            <input id="incAmount" name="amount" inputmode="numeric" autocomplete="off" placeholder="0" aria-describedby="incAmountErr">
+            <span class="amount-unit" aria-hidden="true">₫</span>
+          </div>
+          <p class="field-error" id="incAmountErr" hidden></p>
+        </div>
+        <div class="field">
+          <label for="incDate">Ngày nhận</label>
+          <input class="input" id="incDate" name="date" type="date">
+        </div>
+        <fieldset class="field">
+          <legend>Người kiếm</legend>
+          <div class="seg" id="incMember"></div>
+        </fieldset>
+        <div class="field">
+          <label for="incNote">Ghi chú <span class="opt">(không bắt buộc)</span></label>
+          <input class="input" id="incNote" name="note" maxlength="80" placeholder="Ví dụ: Lương tháng 11">
+        </div>
+      </div>
+      <div class="sheet-foot">
+        <button class="btn btn--primary btn--block" type="submit" id="incomeSubmit">Lưu</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ===== Thao tác khoản thu ===== -->
+  <dialog class="sheet" id="incomeMenu" aria-labelledby="incomeMenuTitle">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div>
+        <h2 id="incomeMenuTitle">Khoản thu</h2>
+        <p class="sheet-sub" id="incomeMenuSub"></p>
+      </div>
+      <button class="btn-icon" type="button" data-close aria-label="Đóng">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="sheet-body menu-list" id="incomeMenuBody"></div>
+  </dialog>
+
+  <!-- ===== Tạo yêu cầu chi ===== -->
+  <dialog class="sheet" id="expenseSheet" aria-labelledby="expenseTitle">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div>
+        <h2 id="expenseTitle">Tạo yêu cầu chi</h2>
+        <p class="sheet-sub" id="expenseSheetSub">Cả hai cùng duyệt trước khi mua.</p>
+      </div>
+      <button class="btn-icon" type="button" data-close aria-label="Đóng">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <form id="expenseForm" class="sheet-form" novalidate>
+      <div class="sheet-body">
+        <div class="field">
+          <label for="expTitle">Mua gì?</label>
+          <input class="input" id="expTitle" name="title" maxlength="70" placeholder="Ví dụ: Máy hút bụi" aria-describedby="expTitleErr">
+          <p class="field-error" id="expTitleErr" hidden></p>
+        </div>
+        <div class="field">
+          <label for="expAmount">Số tiền</label>
+          <div class="amount-field">
+            <input id="expAmount" name="amount" inputmode="numeric" autocomplete="off" placeholder="0" aria-describedby="expAmountErr">
+            <span class="amount-unit" aria-hidden="true">₫</span>
+          </div>
+          <p class="field-error" id="expAmountErr" hidden></p>
+        </div>
+        <div class="field">
+          <label for="expCategory">Nhóm chi</label>
+          <select class="input" id="expCategory" name="category">
+            <option value="food">Ăn uống</option>
+            <option value="home">Nhà ở</option>
+            <option value="transport">Đi lại</option>
+            <option value="education">Giáo dục</option>
+            <option value="health">Sức khỏe</option>
+            <option value="other" selected>Khác</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="expReason">Lý do</label>
+          <textarea class="textarea" id="expReason" name="reason" rows="3" maxlength="240" placeholder="Vì sao cần mua khoản này?" aria-describedby="expReasonErr"></textarea>
+          <p class="field-error" id="expReasonErr" hidden></p>
+        </div>
+        <div class="form-note" id="expNotice"></div>
+      </div>
+      <div class="sheet-foot">
+        <button class="btn btn--primary btn--block" type="submit" id="expenseSubmit">Gửi yêu cầu</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ===== Chi tiết yêu cầu ===== -->
+  <dialog class="sheet" id="detailSheet" aria-labelledby="detailHeadTitle">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div>
+        <h2 id="detailHeadTitle">Chi tiết yêu cầu</h2>
+        <p class="sheet-sub" id="detailSub"></p>
+      </div>
+      <button class="btn-icon" type="button" data-close aria-label="Đóng">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="sheet-body" id="detailBody"></div>
+    <div class="sheet-foot">
+      <div class="detail-actions" id="detailActions"></div>
+    </div>
+  </dialog>
+
+  <!-- ===== Xác nhận đã mua ===== -->
+  <dialog class="sheet" id="purchaseSheet" aria-labelledby="purchaseTitle">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div>
+        <h2 id="purchaseTitle">Xác nhận đã mua</h2>
+        <p class="sheet-sub">Số dư sẽ được trừ ngay sau khi xác nhận.</p>
+      </div>
+      <button class="btn-icon" type="button" data-close aria-label="Đóng">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="sheet-body" id="purchaseBody"></div>
+    <div class="sheet-foot" id="purchaseFoot"></div>
+  </dialog>
+
+  <!-- ===== Tài khoản ===== -->
+  <dialog class="sheet" id="accountSheet" aria-labelledby="accountTitle">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div>
+        <h2 id="accountTitle">Tài khoản</h2>
+        <p class="sheet-sub">Hai người ngang quyền trong sổ này.</p>
+      </div>
+      <button class="btn-icon" type="button" data-close aria-label="Đóng">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="sheet-body" id="accountBody"></div>
+  </dialog>
+
+  <!-- ===== Hộp thoại xác nhận ===== -->
+  <dialog class="sheet" id="confirmSheet" aria-labelledby="confirmTitle">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div>
+        <h2 id="confirmTitle">Xác nhận</h2>
+      </div>
+      <button class="btn-icon" type="button" data-close aria-label="Đóng">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="sheet-body">
+      <p class="purchase-q" id="confirmText"></p>
+    </div>
+    <div class="sheet-foot">
+      <button class="btn btn--secondary" type="button" id="confirmCancel" data-close>Không, giữ lại</button>
+      <button class="btn btn--danger-solid" type="button" id="confirmBtn">Xác nhận</button>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <noscript>
+    <p style="padding:24px;font-family:sans-serif">Trang này cần JavaScript để chạy prototype. Hãy mở bằng trình duyệt có bật JavaScript.</p>
+  </noscript>
+
+  <script type="module" src="assets/app.js"></script>
+</body>
+</html>
