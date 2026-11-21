@@ -1,5 +1,5 @@
 /* Sổ Chi Tiêu Gia Đình — giao diện OpenDesign, dữ liệu Google Sheet qua Apps Script */
-import * as api from './api.js?v=20261121c';
+import * as api from './api.js?v=20261122a';
 
 (function () {
   'use strict';
