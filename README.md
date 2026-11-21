@@ -144,7 +144,7 @@ Không cần cấu hình domain gì thêm — Apps Script không kiểm tra orig
 | Tốc độ | Mỗi thao tác 0,5–4 giây |
 | Ghi đồng thời | `LockService` khoá mọi thao tác ghi |
 | Sửa tay Sheet | Được, nhưng **không xoá dòng tiêu đề**, không đổi `id`, `status` phải đúng 5 giá trị |
-| Quota Apps Script | 6 phút mỗi lần chạy, 30 lần đồng thời. App không dùng trigger định kỳ (trừ backup tháng) |
+| Quota Apps Script | 6 phút mỗi lần chạy, 30 lần đồng thời. App không dùng trigger định kỳ |
 | Giới hạn ô Sheet | 10 triệu ô — vài chục năm mới hết |
 
 ## Đồng bộ khi có thay đổi
@@ -156,13 +156,6 @@ Không tải toàn bộ dữ liệu định kỳ. Mỗi lần ghi, backend tăng
 3. Version khác → mới gọi `list` tải dữ liệu.
 4. Quay lại tab hoặc cửa sổ được focus → kiểm tra ngay.
 5. Sau khi tự ghi, client lấy version từ response nên không tự trigger tải lại.
-
-## Sao lưu
-
-- Mỗi lần ghi, dữ liệu nằm trong Google Sheet; Google giữ version history ~30 ngày.
-- Thêm bản sao độc lập: menu **Sổ Chi Tiêu → Sao lưu ngay** trong Google Sheet.
-- **Sổ Chi Tiêu → Bật sao lưu hàng tháng** tạo trigger ngày 1 hàng tháng, giữ 12 bản gần nhất trong thư mục `Sổ Chi Tiêu - Backups`.
-- Lần đầu chạy cần cấp quyền Google Drive (Apps Script yêu cầu quyền Drive đầy đủ).
 
 ## Giới hạn GitHub Pages & Google (2026)
 
