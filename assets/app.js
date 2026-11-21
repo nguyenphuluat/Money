@@ -1,4 +1,4 @@
-/* Sổ Chi Tiêu Gia Đình — giao diện từ OpenDesign, dữ liệu Google Sheet qua Apps Script */
+/* Sổ Chi Tiêu Gia Đình — giao diện OpenDesign, dữ liệu Google Sheet qua Apps Script */
 import * as api from './api.js';
 
 (function () {
@@ -17,10 +17,16 @@ import * as api from './api.js';
 
   var CATEGORIES = [
     { id: 'home', label: 'Nhà ở', color: 'var(--chart-1)' },
+    { id: 'utilities', label: 'Hóa đơn & tiện ích', color: 'var(--chart-9)' },
     { id: 'food', label: 'Ăn uống', color: 'var(--chart-2)' },
     { id: 'transport', label: 'Đi lại', color: 'var(--chart-3)' },
-    { id: 'education', label: 'Giáo dục', color: 'var(--chart-4)' },
+    { id: 'shopping', label: 'Mua sắm', color: 'var(--chart-8)' },
+    { id: 'pets', label: 'Thú cưng', color: 'var(--chart-7)' },
     { id: 'health', label: 'Sức khỏe', color: 'var(--chart-5)' },
+    { id: 'education', label: 'Giáo dục', color: 'var(--chart-4)' },
+    { id: 'gifts', label: 'Quà tặng & hiếu hỉ', color: 'var(--chart-10)' },
+    { id: 'entertainment', label: 'Giải trí', color: 'var(--chart-11)' },
+    { id: 'travel', label: 'Du lịch', color: 'var(--chart-12)' },
     { id: 'other', label: 'Khác', color: 'var(--chart-6)' }
   ];
 
@@ -174,8 +180,14 @@ import * as api from './api.js';
     data: { incomes: [], expenses: [] },
     view: 'overview',
     filter: 'all',
+    filters: {
+      income: { person: 'all', preset: 'all', from: '', to: '' },
+      expenses: { person: 'all', preset: 'all', from: '', to: '' }
+    },
+    filterDraft: null,
     loading: true,
     loggedIn: false,
+    busy: false,
     editingIncome: null,
     editingExpense: null,
     incomeMember: null,
@@ -292,7 +304,7 @@ import * as api from './api.js';
     var no = e.agreed[id] === false;
     var cls = ok ? 'is-ok' : (no ? 'is-no' : 'is-wait');
     var ic = ok ? 'check' : (no ? 'x' : 'clock');
-    return '<span class="approver ' + cls + '">' + avatar(id, 'avatar--xs') + esc(nameOf(id)) + icon(ic, 13) + '</span>';
+    return '<span class="approver ' + cls + '">' + avatar(id, 'avatar--xs') + '<span class="approver-name">' + esc(nameOf(id)) + '</span>' + icon(ic, 13) + '</span>';
   }
 
   function actionButtons(e) {
@@ -435,49 +447,40 @@ import * as api from './api.js';
     var data = chartData();
     if (!data) return '';
 
-    var R = 62, CIRC = 2 * Math.PI * R;
-    var gap = data.rows.length > 1 ? 2.5 : 0;
-    var offset = 0;
-    var circles = '';
     var parts = [];
+    var segments = '';
     data.rows.forEach(function (row) {
-      var frac = row.value / data.total;
-      var len = Math.max(CIRC * frac - gap, 0.8);
-      circles += '<circle cx="80" cy="80" r="' + R + '" fill="none" style="stroke:' + row.color + '" stroke-width="18" stroke-dasharray="' + len.toFixed(2) + ' ' + (CIRC - len).toFixed(2) + '" stroke-dashoffset="' + (-offset).toFixed(2) + '" transform="rotate(-90 80 80)"></circle>';
-      offset += CIRC * frac;
-      parts.push(row.label + ' ' + Math.round(frac * 100) + '%');
+      var pct = Math.round(row.value / data.total * 100);
+      parts.push(row.label + ' ' + pct + '%');
+      segments += '<span class="chart-seg" style="flex-grow:' + row.value + ';background:' + row.color + '" aria-hidden="true"></span>';
     });
 
     var legend = data.rows.map(function (row) {
-      return '<li class="legend-row">' +
-        '<span class="legend-dot" style="background:' + row.color + '"></span>' +
-        '<span class="legend-name">' + esc(row.label) + '</span>' +
-        '<span class="legend-amount">' + money(row.value) + '</span>' +
-        '<span class="legend-pct">' + Math.round(row.value / data.total * 100) + '%</span></li>';
+      return '<li class="chart-item">' +
+        '<span class="chart-key" style="background:' + row.color + '" aria-hidden="true"></span>' +
+        '<span class="chart-name">' + esc(row.label) + '</span>' +
+        '<span class="chart-amount">' + money(row.value) + '</span>' +
+        '<span class="chart-pct">' + Math.round(row.value / data.total * 100) + '%</span></li>';
     }).join('');
 
     var c = compute();
-    var ratio = '';
+    var income = '';
     if (c.monthIn > 0) {
       var used = Math.round(c.monthOut / c.monthIn * 100);
       var over = used > 100;
-      ratio = '<div class="ratio"><div class="ratio-head"><span>' +
-        (over ? 'Chi vượt thu nhập tháng này' : 'Chi so với thu nhập tháng này') +
-        '</span><b>' + used + '%</b></div><div class="ratio-track"><span class="' +
-        (over ? 'is-over' : '') + '" style="width:' + Math.min(used, 100) + '%"></span></div></div>';
+      income = '<div class="chart-income' + (over ? ' is-over' : '') + '">' +
+        '<span class="chart-income-label">' + (over ? 'Chi vượt thu nhập' : 'So với thu nhập') + '</span>' +
+        '<span class="chart-income-value">' + used + '%</span></div>';
     }
 
     var month = monthLabel(monthKey(new Date().toISOString()));
     return '<div class="section chart-section"><div class="section-head"><h2 class="section-title">Chi tiêu theo nhóm</h2>' +
       '<span class="chart-period">' + esc(month) + '</span></div>' +
-      '<div class="card card-pad chart-card"><div class="chart-body">' +
-      '<div class="donut" role="img" aria-label="Chi tiêu tháng này: ' + esc(parts.join(', ')) + '">' +
-      '<svg viewBox="0 0 160 160" aria-hidden="true" focusable="false">' +
-      '<circle cx="80" cy="80" r="' + R + '" fill="none" style="stroke:var(--line-soft)" stroke-width="18"></circle>' +
-      circles + '</svg>' +
-      '<div class="donut-center"><span class="donut-label">Tổng chi</span>' +
-      '<span class="donut-value">' + money(data.total) + '</span></div></div>' +
-      '<ul class="legend">' + legend + '</ul></div>' + ratio + '</div></div>';
+      '<div class="card chart-card">' +
+      '<div class="chart-summary"><div class="chart-total-block"><span class="chart-total-label">Tổng chi tháng này</span>' +
+      '<span class="chart-total">' + money(data.total) + '</span></div>' + income + '</div>' +
+      '<div class="chart-stack" role="img" aria-label="Chi tiêu tháng này theo nhóm: ' + esc(parts.join(', ')) + '">' + segments + '</div>' +
+      '<ul class="chart-legend">' + legend + '</ul></div></div>';
   }
 
   function renderOverview() {
@@ -538,7 +541,7 @@ import * as api from './api.js';
     if (todo.length) {
       html += '<div class="req-list">' + todo.map(requestCard).join('') + '</div>';
     } else {
-      html += '<div class="card card-pad" style="display:flex;gap:10px;align-items:center;padding:16px">' +
+      html += '<div class="card card-pad" style="display:flex;gap:12px;align-items:center;padding:16px">' +
         '<span class="quiet-check">' + icon('check', 16) + '</span>' +
         '<div><p class="card-title">Không có gì chờ bạn</p><p class="card-sub">Yêu cầu cần duyệt sẽ xuất hiện ở đây.</p></div></div>';
     }
@@ -553,7 +556,7 @@ import * as api from './api.js';
     html += '<div class="section desk-only"><div class="section-head"><h2 class="section-title">Thu nhập tháng này</h2></div>' +
       '<div class="card card-pad">' + state.members.map(function (m) {
         return '<div class="person-row">' + avatar(m.id, 'avatar--sm') +
-          '<div><p class="person-name">' + esc(m.name || 'Thành viên') + '</p><p class="person-role">' + esc(m.role || 'Thành viên') + '</p></div>' +
+          '<div class="person-text"><p class="person-name">' + esc(m.name || 'Thành viên') + '</p><p class="person-role">' + esc(m.role || 'Thành viên') + '</p></div>' +
           '<span class="person-amount">' + money(monthIncomeBy(m.id)) + '</span></div>';
       }).join('') + '</div></div>';
     html += '</div>';
@@ -562,13 +565,212 @@ import * as api from './api.js';
     return html;
   }
 
+  var FILTER_PRESETS = [
+    { id: 'all', label: 'Tất cả' },
+    { id: 'thisMonth', label: 'Tháng này' },
+    { id: 'lastMonth', label: 'Tháng trước' },
+    { id: 'last3', label: '3 tháng gần đây' }
+  ];
+
+  function presetRange(preset) {
+    var now = new Date();
+    var y = now.getFullYear();
+    var m = now.getMonth();
+    if (preset === 'thisMonth') return { from: dateInputValue(new Date(y, m, 1)), to: dateInputValue(now) };
+    if (preset === 'lastMonth') return { from: dateInputValue(new Date(y, m - 1, 1)), to: dateInputValue(new Date(y, m, 0)) };
+    if (preset === 'last3') return { from: dateInputValue(new Date(y, m - 2, 1)), to: dateInputValue(now) };
+    return { from: '', to: '' };
+  }
+
+  function inDateRange(value, filter) {
+    var d = toDate(value);
+    if (!d) return false;
+    var t = d.getTime();
+    if (filter.from) {
+      var start = new Date(filter.from + 'T00:00:00').getTime();
+      if (!isNaN(start) && t < start) return false;
+    }
+    if (filter.to) {
+      var end = new Date(filter.to + 'T23:59:59.999').getTime();
+      if (!isNaN(end) && t > end) return false;
+    }
+    return true;
+  }
+
+  function passesFilter(item, filter, dateField, personField) {
+    if (filter.person !== 'all' && item[personField] !== filter.person) return false;
+    return inDateRange(item[dateField], filter);
+  }
+
+  function filterPersonName(id) { return id === 'all' ? 'Tất cả' : nameOf(id); }
+
+  function shortDate(value) {
+    if (!value) return '';
+    var parts = value.split('-');
+    return parts.length === 3 ? parts[2] + '/' + parts[1] : value;
+  }
+
+  function filterTimeLabel(filter) {
+    for (var i = 0; i < FILTER_PRESETS.length; i++) {
+      var preset = FILTER_PRESETS[i];
+      if (preset.id === 'all' || filter.preset !== preset.id) continue;
+      var range = presetRange(preset.id);
+      if (range.from === filter.from && range.to === filter.to) return preset.label;
+    }
+    if (filter.from && filter.to) return shortDate(filter.from) + ' – ' + shortDate(filter.to);
+    if (filter.from) return 'Từ ' + shortDate(filter.from);
+    if (filter.to) return 'Đến ' + shortDate(filter.to);
+    return 'Tất cả thời gian';
+  }
+
+  function filterActive(filter) {
+    return filter.person !== 'all' || filter.preset !== 'all' || !!filter.from || !!filter.to;
+  }
+
+  function filterLabel(kind) { return kind === 'income' ? 'Người kiếm' : 'Người gửi'; }
+
+  function renderFilterPersons() {
+    var wrap = $('#filterPersons');
+    if (!wrap) return;
+    wrap.innerHTML = '<button class="seg-btn is-mini" type="button" data-act="filter-person" data-person="all">Tất cả</button>' +
+      state.members.map(function (m) {
+        return '<button class="seg-btn is-mini" type="button" data-act="filter-person" data-person="' + esc(m.id) + '">' + esc(m.name || 'Thành viên') + '</button>';
+      }).join('');
+  }
+
+  function filterBar(kind) {
+    var filter = state.filters[kind];
+    var active = filterActive(filter);
+    var person = filterPersonName(filter.person);
+    var time = filterTimeLabel(filter);
+    return '<div class="filter-bar" role="group" aria-label="Bộ lọc">' +
+      '<button class="filter-trigger' + (filter.person !== 'all' ? ' is-active' : '') + '" type="button" data-act="open-filter" aria-haspopup="dialog" aria-label="' + filterLabel(kind) + ': ' + esc(person) + '">' +
+        '<span class="filter-trigger-label">' + filterLabel(kind) + '</span>' +
+        '<span class="filter-trigger-value" title="' + esc(person) + '">' + esc(person) + '</span></button>' +
+      '<button class="filter-trigger' + (filter.preset !== 'all' || filter.from || filter.to ? ' is-active' : '') + '" type="button" data-act="open-filter" aria-haspopup="dialog" aria-label="Thời gian: ' + esc(time) + '">' +
+        '<span class="filter-trigger-label">Thời gian</span>' +
+        '<span class="filter-trigger-value" title="' + esc(time) + '">' + esc(time) + '</span></button>' +
+      (active ? '<button class="filter-clear" type="button" data-act="clear-filter" aria-label="Xoá bộ lọc">Xoá</button>' : '') +
+      '</div>';
+  }
+
+  function clearFilter(kind, includeStatus) {
+    if (kind !== 'income' && kind !== 'expenses') return;
+    state.filters[kind] = { person: 'all', preset: 'all', from: '', to: '' };
+    if (kind === 'expenses' && includeStatus) state.filter = 'all';
+    render();
+  }
+
+  function syncFilterSheet() {
+    var draft = state.filterDraft;
+    if (!draft) return;
+    if (!draft.from && !draft.to) draft.preset = 'all';
+    else if (draft.preset !== 'custom') {
+      var draftRange = presetRange(draft.preset);
+      if (draftRange.from !== draft.from || draftRange.to !== draft.to) draft.preset = 'custom';
+    }
+    var isIncome = draft.target === 'income';
+    var title = $('#filterTitle');
+    if (title) title.textContent = isIncome ? 'Lọc thu nhập' : 'Lọc chi tiêu';
+    var sub = $('#filterSub');
+    if (sub) sub.textContent = isIncome ? 'Theo người kiếm và ngày nhận.' : 'Theo người gửi và ngày tạo yêu cầu.';
+    var personLabel = $('#filterPersonLabel');
+    if (personLabel) personLabel.textContent = isIncome ? 'Người kiếm' : 'Người gửi';
+    $$('#filterPersons [data-person]').forEach(function (button) {
+      button.textContent = filterPersonName(button.getAttribute('data-person'));
+      button.setAttribute('aria-pressed', button.getAttribute('data-person') === draft.person ? 'true' : 'false');
+    });
+    $$('#filterPresets [data-preset]').forEach(function (button) {
+      button.setAttribute('aria-pressed', button.getAttribute('data-preset') === draft.preset ? 'true' : 'false');
+    });
+    var from = $('#filterFrom');
+    var to = $('#filterTo');
+    if (from) { from.value = draft.from || ''; from.setAttribute('aria-invalid', 'false'); }
+    if (to) { to.value = draft.to || ''; to.setAttribute('aria-invalid', 'false'); }
+    var hint = $('#filterHint');
+    if (hint) hint.textContent = isIncome
+      ? 'Lọc theo ngày nhận thu nhập; để trống nếu không giới hạn.'
+      : 'Lọc theo ngày gửi yêu cầu; để trống nếu không giới hạn.';
+    var error = $('#filterErr');
+    if (error) { error.hidden = true; error.textContent = ''; }
+  }
+
+  function openFilterSheet() {
+    if (state.view !== 'income' && state.view !== 'expenses') return;
+    var filter = state.filters[state.view];
+    state.filterDraft = { target: state.view, person: filter.person, preset: filter.preset, from: filter.from, to: filter.to };
+    renderFilterPersons();
+    syncFilterSheet();
+    openDialog($('#filterSheet'), '#filterPersons [aria-pressed="true"]');
+  }
+
+  function resetFilterDraft() {
+    if (!state.filterDraft) return;
+    state.filterDraft.person = 'all';
+    state.filterDraft.preset = 'all';
+    state.filterDraft.from = '';
+    state.filterDraft.to = '';
+    syncFilterSheet();
+  }
+
+  function onFilterDateChange() {
+    if (!state.filterDraft) return;
+    var from = $('#filterFrom');
+    var to = $('#filterTo');
+    state.filterDraft.from = from ? from.value : '';
+    state.filterDraft.to = to ? to.value : '';
+    state.filterDraft.preset = (state.filterDraft.from || state.filterDraft.to) ? 'custom' : 'all';
+    syncFilterSheet();
+  }
+
+  function applyFilterDraft() {
+    var draft = state.filterDraft;
+    if (!draft) return;
+    var fromEl = $('#filterFrom');
+    var toEl = $('#filterTo');
+    var error = $('#filterErr');
+    var from = fromEl ? fromEl.value : '';
+    var to = toEl ? toEl.value : '';
+    if (from && to && from > to) {
+      if (error) {
+        error.textContent = 'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.';
+        error.hidden = false;
+      }
+      if (fromEl) fromEl.setAttribute('aria-invalid', 'true');
+      if (toEl) toEl.setAttribute('aria-invalid', 'true');
+      return;
+    }
+    var preset = draft.preset;
+    if (!from && !to) preset = 'all';
+    else if (preset === 'all') preset = 'custom';
+    else if (preset !== 'custom') {
+      var range = presetRange(preset);
+      if (range.from !== from || range.to !== to) preset = 'custom';
+    }
+    state.filters[draft.target] = { person: draft.person, preset: preset, from: from, to: to };
+    state.filterDraft = null;
+    closeDialog($('#filterSheet'));
+    render();
+  }
+
   function renderIncome() {
-    var incomes = state.data.incomes.slice().sort(function (a, b) { return atTime(b.date) - atTime(a.date); });
+    var all = state.data.incomes.slice().sort(function (a, b) { return atTime(b.date) - atTime(a.date); });
+    var incomes = all.filter(function (i) { return passesFilter(i, state.filters.income, 'date', 'member'); });
     var total = incomes.reduce(function (s, i) { return s + i.amount; }, 0);
     var html = pageHead('Thu nhập', incomes.length + ' khoản · tổng ' + money(total),
       '<button class="btn btn--primary" type="button" data-act="open-income">' + icon('plus', 18) + 'Thêm thu nhập</button>');
 
+    html += filterBar('income');
+
     if (!incomes.length) {
+      if (all.length) {
+        return html + emptyState({
+          icon: 'income',
+          title: 'Không có khoản thu phù hợp',
+          text: 'Thử đổi người hoặc khoảng thời gian để xem các khoản khác.',
+          actions: '<button class="btn btn--secondary" type="button" data-act="clear-filter">Xoá bộ lọc</button>'
+        });
+      }
       return html + emptyState({
         icon: 'income',
         title: 'Chưa có khoản thu nào',
@@ -597,7 +799,7 @@ import * as api from './api.js';
           '<div class="income-info"><span class="income-note">' + esc(i.note || 'Không ghi chú') + '</span></div>' +
           '<div class="income-date">' + fmtDate(i.date) + '</div>' +
           '<div class="income-amount">+' + money(i.amount) + '</div>' +
-          '<button class="btn-icon income-del" type="button" data-act="income-menu" data-id="' + i.id + '" aria-label="Thao tác với khoản thu ' + esc(i.note || nameOf(i.member)) + '">' + icon('more', 20) + '</button>' +
+          '<button class="btn-icon income-more" type="button" data-act="income-menu" data-id="' + i.id + '" aria-label="Thao tác với khoản thu ' + esc(i.note || nameOf(i.member)) + '">' + icon('more', 20) + '</button>' +
           '</div>';
       });
       html += '</div></section>';
@@ -614,8 +816,9 @@ import * as api from './api.js';
     { id: 'other', label: 'Khác' }
   ];
 
-  function filterCount(id) {
-    return state.data.expenses.filter(function (e) {
+  function filterCount(id, source) {
+    source = source || state.data.expenses;
+    return source.filter(function (e) {
       if (id === 'all') return true;
       if (id === 'other') return e.status === 'rejected' || e.status === 'cancelled';
       return e.status === id;
@@ -624,7 +827,10 @@ import * as api from './api.js';
 
   function renderExpenses() {
     var order = { pending: 0, approved: 1, purchased: 2, rejected: 3, cancelled: 4 };
-    var list = state.data.expenses.slice().sort(function (a, b) {
+    var base = state.data.expenses.filter(function (e) {
+      return passesFilter(e, state.filters.expenses, 'created', 'requester');
+    });
+    var list = base.slice().sort(function (a, b) {
       var d = (order[a.status] || 0) - (order[b.status] || 0);
       return d !== 0 ? d : atTime(b.created) - atTime(a.created);
     });
@@ -635,26 +841,34 @@ import * as api from './api.js';
       });
     }
 
-    var openCount = state.data.expenses.filter(function (e) { return e.status === 'pending' || e.status === 'approved'; }).length;
+    var openCount = base.filter(function (e) { return e.status === 'pending' || e.status === 'approved'; }).length;
     var html = pageHead('Chi tiêu', openCount ? openCount + ' khoản đang chờ xử lý' : 'Không có khoản nào đang chờ',
       '<button class="btn btn--primary" type="button" data-act="open-expense">' + icon('plus', 18) + 'Tạo yêu cầu chi</button>');
 
+    html += filterBar('expenses');
     html += '<div class="chip-rail" role="group" aria-label="Lọc yêu cầu theo trạng thái">' +
       FILTERS.map(function (f) {
-        var count = filterCount(f.id);
+        var count = filterCount(f.id, base);
         return '<button class="chip" type="button" data-act="filter" data-filter="' + f.id + '" aria-pressed="' + (state.filter === f.id ? 'true' : 'false') + '">' +
           f.label + (count ? '<b>' + count + '</b>' : '') + '</button>';
       }).join('') + '</div>';
 
     if (!list.length) {
-      var isAll = state.data.expenses.length === 0;
+      var isAllData = state.data.expenses.length === 0;
+      var baseEmpty = base.length === 0;
       html += emptyState({
         icon: 'expenses',
-        title: isAll ? 'Chưa có yêu cầu chi' : 'Không có yêu cầu ở mục này',
-        text: isAll ? 'Tạo yêu cầu đầu tiên để người còn lại nhận được và bấm duyệt.' : 'Thử chọn “Tất cả” để xem những yêu cầu ở trạng thái khác.',
-        actions: isAll
+        title: isAllData ? 'Chưa có yêu cầu chi' : (baseEmpty ? 'Không có yêu cầu phù hợp' : 'Không có yêu cầu ở mục này'),
+        text: isAllData
+          ? 'Tạo yêu cầu đầu tiên để người còn lại nhận được và bấm duyệt.'
+          : (baseEmpty
+            ? 'Thử đổi người hoặc khoảng thời gian để xem các yêu cầu khác.'
+            : 'Thử chọn “Tất cả” để xem những yêu cầu ở trạng thái khác.'),
+        actions: isAllData
           ? '<button class="btn btn--primary" type="button" data-act="open-expense">' + icon('plus', 18) + 'Tạo yêu cầu chi</button>'
-          : '<button class="btn btn--secondary" type="button" data-act="filter" data-filter="all">Xem tất cả</button>'
+          : (baseEmpty
+            ? '<button class="btn btn--secondary" type="button" data-act="clear-all-filters">Xoá bộ lọc</button>'
+            : '<button class="btn btn--secondary" type="button" data-act="filter" data-filter="all">Xem tất cả</button>')
       });
       return html;
     }
@@ -716,27 +930,72 @@ import * as api from './api.js';
     if (title) title.focus({ preventScroll: true });
   }
 
+  function setBusy(button, label) {
+    state.busy = true;
+    document.body.classList.add('is-busy');
+
+    var original = button ? button.innerHTML : '';
+    var wasDisabled = button ? button.disabled : false;
+    var scope = button ? (button.closest('dialog') || button.closest('.req-card')) : null;
+    var others = [];
+    if (scope) {
+      others = $$('button', scope).filter(function (b) { return b !== button; });
+    }
+    var previous = others.map(function (b) { return { el: b, disabled: b.disabled }; });
+    previous.forEach(function (item) { item.el.disabled = true; });
+
+    if (button) {
+      button.disabled = true;
+      button.classList.add('is-loading');
+      button.setAttribute('aria-busy', 'true');
+      button.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span><span>' + esc(label || 'Đang xử lý…') + '</span>';
+    }
+
+    return function done() {
+      state.busy = false;
+      document.body.classList.remove('is-busy');
+      previous.forEach(function (item) { item.el.disabled = item.disabled; });
+      if (button) {
+        button.classList.remove('is-loading');
+        button.removeAttribute('aria-busy');
+        button.disabled = wasDisabled;
+        button.innerHTML = original;
+      }
+    };
+  }
+
+  async function runBusy(button, label, task) {
+    if (state.busy) return false;
+    var done = setBusy(button, label);
+    try {
+      return await task();
+    } finally {
+      done();
+    }
+  }
+
   function timelineHtml(e) {
     var items = [];
+    var order = [e.requester].concat(memberIds().filter(function (id) { return id !== e.requester; }));
     items.push({ cls: 'is-done', icon: 'check', title: 'Gửi yêu cầu', time: fmtDate(e.created) + ' · ' + relTime(e.created) });
+    order.forEach(function (id) {
+      if (e.agreed[id] === true) {
+        items.push({ cls: 'is-done', icon: 'check', title: nameOf(id) + ' đã đồng ý', time: '' });
+      }
+    });
     if (e.status === 'pending') {
-      memberIds().forEach(function (id) {
-        if (e.agreed[id] === true) {
-          items.push({ cls: 'is-done', icon: 'check', title: nameOf(id) + ' đã đồng ý', time: '' });
-        } else {
+      order.forEach(function (id) {
+        if (e.agreed[id] !== true) {
           items.push({ cls: 'is-wait', icon: 'clock', title: 'Chờ ' + nameOf(id) + ' duyệt', time: '' });
         }
       });
-    } else if (e.status === 'approved' || e.status === 'purchased') {
-      items.push({ cls: 'is-done', icon: 'check', title: 'Cả hai đã đồng ý', time: e.approvedAt ? fmtDate(e.approvedAt) : '' });
-    }
-    if (e.status === 'purchased') {
+    } else if (e.status === 'approved') {
+      items.push({ cls: 'is-done', icon: 'check', title: 'Đã duyệt', time: e.approvedAt ? fmtDate(e.approvedAt) : '' });
+    } else if (e.status === 'purchased') {
       items.push({ cls: 'is-done', icon: 'cart', title: 'Đã mua', time: fmtDate(e.purchasedAt) });
-    }
-    if (e.status === 'rejected') {
+    } else if (e.status === 'rejected') {
       items.push({ cls: 'is-bad', icon: 'x', title: nameOf(e.rejectedBy) + ' từ chối', time: relTime(e.rejectedAt) });
-    }
-    if (e.status === 'cancelled') {
+    } else if (e.status === 'cancelled') {
       items.push({ cls: 'is-bad', icon: 'slash', title: nameOf(e.cancelledBy || e.requester) + ' đã huỷ', time: relTime(e.cancelledAt || e.created) });
     }
     return '<div class="timeline">' + items.map(function (item) {
@@ -820,6 +1079,7 @@ import * as api from './api.js';
   }
 
   var confirmAction = null;
+  var confirmBusyLabel = 'Đang xử lý…';
   function openConfirm(opts) {
     var sheet = $('#confirmSheet');
     if (!sheet) return;
@@ -830,6 +1090,7 @@ import * as api from './api.js';
     btn.textContent = opts.confirmLabel || 'Xác nhận';
     btn.className = 'btn ' + (opts.danger === false ? 'btn--primary' : 'btn--danger-solid');
     confirmAction = opts.onConfirm || null;
+    confirmBusyLabel = opts.busyLabel || 'Đang xử lý…';
     openDialog(sheet, '#confirmCancel');
   }
 
@@ -847,7 +1108,7 @@ import * as api from './api.js';
   function memberSeg(selected) {
     return state.members.map(function (m) {
       return '<button class="seg-btn" type="button" data-act="pick-member" data-member="' + esc(m.id) + '" aria-pressed="' + (selected === m.id ? 'true' : 'false') + '">' +
-        avatar(m.id, 'avatar--xs') + esc(m.name || 'Thành viên') + '</button>';
+        avatar(m.id, 'avatar--xs') + '<span class="seg-name">' + esc(m.name || 'Thành viên') + '</span></button>';
     }).join('');
   }
 
@@ -929,14 +1190,14 @@ import * as api from './api.js';
     var me = state.profile || {};
     var rows = state.members.map(function (m) {
       return '<div class="person-row">' + avatar(m.id, 'avatar--sm') +
-        '<div><p class="person-name">' + esc(m.name || 'Thành viên') + '</p>' +
+        '<div class="person-text"><p class="person-name">' + esc(m.name || 'Thành viên') + '</p>' +
         '<p class="person-role">' + esc(m.role || 'Thành viên') + '</p></div>' +
         (m.id === state.user ? '<span class="req-stamp">Bạn</span>' : '') + '</div>';
     }).join('');
 
     body.innerHTML =
       '<div class="account-head">' + avatar(state.user) +
-      '<div><p class="account-name">' + esc(me.name || 'Thành viên') + '</p>' +
+      '<div class="account-text"><p class="account-name">' + esc(me.name || 'Thành viên') + '</p>' +
       '<p class="account-mail">' + esc(me.email || '') + '</p></div></div>' +
       '<div class="field"><label for="accName">Tên hiển thị</label>' +
       '<input class="input" id="accName" value="' + esc(me.name || '') + '" maxlength="24" autocomplete="off"></div>' +
@@ -949,7 +1210,12 @@ import * as api from './api.js';
     openDialog($('#accountSheet'), '#accName');
   }
 
-  async function addIncome() {
+  function newId() {
+    if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    return 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2, 10);
+  }
+
+  function addIncome() {
     var amount = Number($('#incAmount').value.replace(/[^\d]/g, ''));
     var dateVal = $('#incDate').value;
     if (!amount) {
@@ -974,23 +1240,37 @@ import * as api from './api.js';
       note: $('#incNote').value.trim()
     };
 
-    try {
-      if (editing) {
-        await api.updateIncome(Object.assign({ id: editing.id }, values));
-        toast('Đã cập nhật thu nhập');
-      } else {
-        await api.addIncome(values);
-        toast('Đã thêm thu nhập ' + money(amount));
+    runBusy($('#incomeSubmit'), 'Đang lưu…', async function () {
+      try {
+        if (editing) {
+          await api.updateIncome(Object.assign({ id: editing.id }, values));
+          editing.amount = values.amount;
+          editing.date = values.date;
+          editing.member = values.member;
+          editing.note = values.note;
+          toast('Đã cập nhật thu nhập');
+        } else {
+          var id = newId();
+          await api.addIncome(Object.assign({ id: id }, values));
+          state.data.incomes.push({
+            id: id,
+            amount: amount,
+            date: values.date,
+            member: values.member,
+            note: values.note,
+            createdAt: new Date().toISOString()
+          });
+          toast('Đã thêm thu nhập ' + money(amount));
+        }
+        state.editingIncome = null;
+        afterMutation();
+      } catch (err) {
+        fail(err);
       }
-      state.editingIncome = null;
-      await refreshData(true);
-      afterMutation();
-    } catch (err) {
-      fail(err);
-    }
+    });
   }
 
-  async function createExpense() {
+  function createExpense() {
     var title = $('#expTitle').value.trim();
     var amount = Number($('#expAmount').value.replace(/[^\d]/g, ''));
     var reason = $('#expReason').value.trim();
@@ -1026,75 +1306,116 @@ import * as api from './api.js';
     var editing = state.editingExpense ? findExpense(state.editingExpense) : null;
     var me = state.user;
 
-    try {
-      if (editing) {
-        await api.updateExpense({
-          id: editing.id,
-          title: title,
-          amount: amount,
-          category: category,
-          reason: reason
-        });
+    runBusy($('#expenseSubmit'), editing ? 'Đang lưu…' : 'Đang gửi…', async function () {
+      try {
+        if (editing) {
+          await api.updateExpense({
+            id: editing.id,
+            title: title,
+            amount: amount,
+            category: category,
+            reason: reason
+          });
+          editing.title = title;
+          editing.amount = amount;
+          editing.category = category;
+          editing.reason = reason;
 
-        if (editing.status === 'approved') {
-          var partner = otherOf(editing.requester);
-          toast('Đã cập nhật · chờ ' + (partner ? nameOf(partner) : 'người còn lại') + ' duyệt lại');
-        } else if (editing.status === 'purchased') {
-          toast('Đã cập nhật chi tiêu · số dư đã tính lại');
+          if (editing.status === 'approved') {
+            var reset = {};
+            reset[editing.requester] = true;
+            state.members.forEach(function (m) { if (m.id !== editing.requester) reset[m.id] = null; });
+            editing.status = 'pending';
+            editing.approvedAt = null;
+            editing.agreed = reset;
+            var partner = otherOf(editing.requester);
+            toast('Đã cập nhật · chờ ' + (partner ? nameOf(partner) : 'người còn lại') + ' duyệt lại');
+          } else if (editing.status === 'purchased') {
+            toast('Đã cập nhật chi tiêu · số dư đã tính lại');
+          } else {
+            toast('Đã cập nhật yêu cầu');
+          }
         } else {
-          toast('Đã cập nhật yêu cầu');
+          var id = newId();
+          var agreed = {};
+          agreed[me] = true;
+          state.members.forEach(function (m) { if (m.id !== me) agreed[m.id] = null; });
+
+          await api.addExpense({
+            id: id,
+            title: title,
+            amount: amount,
+            category: category,
+            reason: reason
+          });
+
+          state.data.expenses.push({
+            id: id,
+            title: title,
+            amount: amount,
+            category: category,
+            reason: reason,
+            requester: me,
+            created: new Date().toISOString(),
+            agreed: agreed,
+            status: 'pending'
+          });
+          state.filter = 'all';
+          state.view = 'expenses';
+          var other = otherOf(me);
+          toast('Đã gửi yêu cầu' + (other ? ' tới ' + nameOf(other) : ''));
         }
-      } else {
-        await api.addExpense({
-          title: title,
-          amount: amount,
-          category: category,
-          reason: reason
-        });
-
-        state.filter = 'all';
-        state.view = 'expenses';
-        var other = otherOf(me);
-        toast('Đã gửi yêu cầu' + (other ? ' tới ' + nameOf(other) : ''));
+        state.editingExpense = null;
+        afterMutation();
+      } catch (err) {
+        fail(err);
       }
-      state.editingExpense = null;
-      await refreshData(true);
-      afterMutation();
-    } catch (err) {
-      fail(err);
-    }
+    });
   }
 
-  async function approve(id) {
-    var me = state.user;
-    var current = findExpense(id);
-    if (!current || current.status !== 'pending') return;
-
-    var partner = otherOf(me);
-    var partnerDone = state.members.filter(function (m) { return m.id !== me; })
-      .every(function (m) { return current.agreed[m.id] === true; });
-
-    try {
-      var res = await api.approve(id);
-      toast(res.approved
-        ? 'Đã đồng ý · yêu cầu đủ hai người duyệt'
-        : 'Đã đồng ý · chờ ' + (partner ? nameOf(partner) : 'người còn lại') + ' duyệt');
-      await refreshData(true);
-    } catch (err) {
-      fail(err);
-    }
-  }
-
-  async function reject(id) {
+  function approve(id, button) {
+    if (state.busy) return;
     var e = findExpense(id);
     if (!e || e.status !== 'pending') return;
-    try {
-      await api.reject(id);
-      toast('Đã từ chối yêu cầu');
-      await refreshData(true);
-    } catch (err) {
-      fail(err);
-    }
+    var me = state.user;
+    var partner = otherOf(me);
+
+    runBusy(button, 'Đang xử lý…', async function () {
+      try {
+        var res = await api.approve(id);
+        e.agreed[me] = true;
+        if (res.approved) {
+          e.status = 'approved';
+          e.approvedAt = res.approvedAt || new Date().toISOString();
+        }
+        toast(res.approved
+          ? 'Đã đồng ý · yêu cầu đủ hai người duyệt'
+          : 'Đã đồng ý · chờ ' + (partner ? nameOf(partner) : 'người còn lại') + ' duyệt');
+        afterMutation();
+      } catch (err) {
+        fail(err);
+      }
+    });
+  }
+
+  function reject(id, button) {
+    if (state.busy) return;
+    var e = findExpense(id);
+    if (!e || e.status !== 'pending') return;
+
+    runBusy(button, 'Đang xử lý…', async function () {
+      try {
+        var res = await api.reject(id);
+        e.status = 'rejected';
+        e.rejectedBy = state.user;
+        e.rejectedAt = res.rejectedAt || new Date().toISOString();
+        e.agreed[state.user] = false;
+        toast('Đã từ chối yêu cầu');
+        afterMutation();
+      } catch (err) {
+        fail(err);
+      }
+    });
   }
 
   function askCancel(id) {
@@ -1104,11 +1425,15 @@ import * as api from './api.js';
       title: 'Huỷ yêu cầu?',
       message: '<b>' + esc(e.title) + '</b> · ' + money(e.amount) + '. Yêu cầu sẽ dừng ở trạng thái Đã huỷ và không trừ số dư.',
       confirmLabel: 'Huỷ yêu cầu',
+      busyLabel: 'Đang huỷ…',
       onConfirm: async function () {
         try {
           await api.cancel(id);
+          e.status = 'cancelled';
+          e.cancelledBy = state.user;
+          e.cancelledAt = new Date().toISOString();
           toast('Đã huỷ yêu cầu');
-          await refreshData(true);
+          afterMutation();
         } catch (err) {
           fail(err);
         }
@@ -1123,11 +1448,13 @@ import * as api from './api.js';
       title: 'Xoá yêu cầu?',
       message: '<b>' + esc(e.title) + '</b> sẽ bị xoá khỏi sổ. Thao tác này không thể hoàn tác.',
       confirmLabel: 'Xoá',
+      busyLabel: 'Đang xoá…',
       onConfirm: async function () {
         try {
           await api.deleteExpense(id);
+          state.data.expenses = state.data.expenses.filter(function (x) { return x.id !== id; });
           toast('Đã xoá yêu cầu');
-          await refreshData(true);
+          afterMutation();
         } catch (err) {
           fail(err);
         }
@@ -1135,17 +1462,22 @@ import * as api from './api.js';
     });
   }
 
-  async function confirmBuy(id) {
+  function confirmBuy(id, button) {
+    if (state.busy) return;
     var e = findExpense(id);
     if (!e || e.status !== 'approved') return;
-    try {
-      await api.purchase(id);
-      toast('Đã ghi nhận chi tiêu · số dư đã cập nhật');
-      await refreshData(true);
-      afterMutation();
-    } catch (err) {
-      fail(err);
-    }
+
+    runBusy(button, 'Đang xử lý…', async function () {
+      try {
+        var res = await api.purchase(id);
+        e.status = 'purchased';
+        e.purchasedAt = res.purchasedAt || new Date().toISOString();
+        toast('Đã ghi nhận chi tiêu · số dư đã cập nhật');
+        afterMutation();
+      } catch (err) {
+        fail(err);
+      }
+    });
   }
 
   function askDeleteIncome(id) {
@@ -1155,18 +1487,19 @@ import * as api from './api.js';
       title: 'Xoá khoản thu?',
       message: '<b>' + (inc.note ? esc(inc.note) : esc(nameOf(inc.member))) + '</b> · +' + money(inc.amount) + '. Số dư sẽ được tính lại.',
       confirmLabel: 'Xoá',
+      busyLabel: 'Đang xoá…',
       onConfirm: async function () {
         try {
           await api.deleteIncome(id);
+          state.data.incomes = state.data.incomes.filter(function (i) { return i.id !== id; });
           toast('Đã xoá khoản thu');
-          await refreshData(true);
+          afterMutation();
         } catch (err) {
           fail(err);
         }
       }
     });
   }
-
   function openIncomeMenu(id) {
     var income = findIncome(id);
     var sheet = $('#incomeMenu');
@@ -1195,15 +1528,148 @@ import * as api from './api.js';
     showLogin();
   }
 
-  function enterApp() {
+  function resetForgotSheet() {
+    var title = $('#forgotTitle');
+    var sub = $('#forgotSub');
+    var fields = $('#forgotFields');
+    var done = $('#forgotDone');
+    var email = $('#forgotEmail');
+    var err = $('#forgotEmailErr');
+    var submit = $('#forgotSubmit');
+    var close = $('#forgotClose');
+    if (title) title.textContent = 'Quên mật khẩu';
+    if (sub) sub.textContent = 'Mật khẩu sẽ được gửi đến đúng email của tài khoản.';
+    if (fields) fields.hidden = false;
+    if (done) done.hidden = true;
+    if (email) {
+      email.value = '';
+      email.setAttribute('aria-invalid', 'false');
+    }
+    if (err) {
+      err.textContent = '';
+      err.hidden = true;
+    }
+    if (submit) {
+      submit.hidden = false;
+      submit.disabled = false;
+      submit.innerHTML = 'Gửi mật khẩu';
+      submit.removeAttribute('aria-busy');
+      submit.classList.remove('is-loading');
+    }
+    if (close) {
+      close.hidden = false;
+      close.disabled = false;
+      close.textContent = 'Đóng';
+      close.classList.remove('btn--primary');
+      close.classList.add('btn--secondary');
+    }
+    var doneText = $('#forgotDoneText');
+    if (doneText) doneText.textContent = '';
+  }
+
+  function openForgotSheet() {
+    var sheet = $('#forgotSheet');
+    if (!sheet || state.loggedIn) return;
+    var loginBtn = $('#loginBtn');
+    if (loginBtn && loginBtn.disabled) return;
+    resetForgotSheet();
+    var loginEmail = $('#loginEmail');
+    var email = $('#forgotEmail');
+    if (email && loginEmail) email.value = loginEmail.value.trim();
+    openDialog(sheet, '#forgotEmail');
+  }
+
+  function showForgotError(message) {
+    var email = $('#forgotEmail');
+    var err = $('#forgotEmailErr');
+    if (err) {
+      err.textContent = message;
+      err.hidden = false;
+    }
+    if (email) {
+      email.setAttribute('aria-invalid', 'true');
+      email.focus();
+    }
+  }
+
+  function syncForgotSent(member) {
+    var fields = $('#forgotFields');
+    var done = $('#forgotDone');
+    var title = $('#forgotTitle');
+    var sub = $('#forgotSub');
+    var text = $('#forgotDoneText');
+    var email = $('#forgotEmail');
+    var err = $('#forgotEmailErr');
+    var submit = $('#forgotSubmit');
+    var close = $('#forgotClose');
+    if (fields) fields.hidden = true;
+    if (done) done.hidden = false;
+    if (title) title.textContent = 'Kiểm tra email';
+    if (sub) sub.textContent = 'Mật khẩu đã được gửi đến đúng tài khoản.';
+    if (text) text.innerHTML = 'Mật khẩu của tài khoản <b>' + esc(member.name) + '</b> đã được gửi đến <b>' + esc(member.email) + '</b>.';
+    if (email) email.setAttribute('aria-invalid', 'false');
+    if (err) {
+      err.hidden = true;
+      err.textContent = '';
+    }
+    if (submit) submit.hidden = true;
+    if (close) {
+      close.textContent = 'Đóng';
+      close.classList.remove('btn--secondary');
+      close.classList.add('btn--primary');
+    }
+    if (done) done.focus();
+  }
+
+  function sendForgotEmail() {
+    if (state.busy) return;
+    var fields = $('#forgotFields');
+    if (fields && fields.hidden) return;
+    var emailEl = $('#forgotEmail');
+    if (!emailEl) return;
+    var email = emailEl.value.trim();
+    var err = $('#forgotEmailErr');
+    if (err) {
+      err.textContent = '';
+      err.hidden = true;
+    }
+    emailEl.setAttribute('aria-invalid', 'false');
+    if (!email) {
+      showForgotError('Nhập email tài khoản.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showForgotError('Email chưa đúng định dạng.');
+      return;
+    }
+    var btn = $('#forgotSubmit');
+    if (!btn) return;
+
+    runBusy(btn, 'Đang gửi…', async function () {
+      try {
+        var res = await api.forgotPassword(email);
+        syncForgotSent(res.member);
+      } catch (e) {
+        showForgotError((e && e.message) || 'Không gửi được email.');
+      }
+    });
+  }
+
+  function enterApp(withSkeleton) {
     var hashView = (location.hash || '').replace('#', '');
     state.view = ['overview', 'income', 'expenses'].indexOf(hashView) !== -1 ? hashView : 'overview';
-    state.loading = false;
     $('#loginView').hidden = true;
     $('#appView').hidden = false;
     state.loggedIn = true;
-    render();
-    requestAnimationFrame(focusPage);
+    if (withSkeleton) {
+      state.loading = true;
+      render();
+      requestAnimationFrame(focusPage);
+    } else {
+      state.loading = false;
+      render();
+      requestAnimationFrame(focusPage);
+    }
   }
 
   function resetState() {
@@ -1217,11 +1683,16 @@ import * as api from './api.js';
     state.data = { incomes: [], expenses: [] };
     state.loading = true;
     state.loggedIn = false;
+    state.busy = false;
     state.editingIncome = null;
     state.editingExpense = null;
     state.incomeMember = null;
     state.filter = 'all';
     state.refreshing = false;
+    state.filters = {
+      income: { person: 'all', preset: 'all', from: '', to: '' },
+      expenses: { person: 'all', preset: 'all', from: '', to: '' }
+    };
   }
 
   function applyData(data) {
@@ -1278,10 +1749,11 @@ import * as api from './api.js';
   }
 
   async function startSession() {
+    enterApp(true);
     try {
       var data = await api.load();
       applyData(data);
-      enterApp();
+      render();
       startPolling();
     } catch (err) {
       if (err && err.code === 'auth') {
@@ -1290,12 +1762,19 @@ import * as api from './api.js';
         showLogin();
         return;
       }
+      state.loading = false;
       showAccessDenied((err && err.message) || 'Không tải được dữ liệu từ Google Sheet.');
     }
   }
   function bindEvents() {
     $$('dialog.sheet').forEach(function (d) {
-      d.addEventListener('click', function (ev) { if (ev.target === d) d.close(); });
+      d.addEventListener('click', function (ev) {
+        if (state.busy) return;
+        if (ev.target === d) d.close();
+      });
+      d.addEventListener('cancel', function (ev) {
+        if (state.busy) ev.preventDefault();
+      });
       d.addEventListener('close', function () {
         if (!$$('dialog.sheet[open]').length) document.body.classList.remove('sheet-open');
       });
@@ -1310,27 +1789,45 @@ import * as api from './api.js';
         var alertBox = $('#loginAlert');
         var btn = $('#loginBtn');
         alertBox.hidden = true;
-
+        if (btn.disabled) return;
         if (!email || !pass) {
-          alertBox.textContent = 'Vui lòng nhập tên đăng nhập và mật khẩu.';
+          alertBox.textContent = 'Vui lòng nhập email và mật khẩu.';
           alertBox.hidden = false;
           (email ? $('#loginPass') : $('#loginEmail')).focus();
           return;
         }
-
         btn.disabled = true;
-        btn.textContent = 'Đang đăng nhập…';
+        btn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span>Đang đăng nhập…';
         try {
           await api.login(email, pass);
           await startSession();
         } catch (err) {
-          alertBox.textContent = (err && err.message) || 'Không đăng nhập được.';
+          alertBox.textContent = (err && err.message) || 'Email hoặc mật khẩu không đúng.';
           alertBox.hidden = false;
           $('#loginPass').focus();
           $('#loginPass').select();
         } finally {
           btn.disabled = false;
-          btn.textContent = 'Đăng nhập';
+          btn.innerHTML = 'Đăng nhập';
+        }
+      });
+    }
+
+    var forgotForm = $('#forgotForm');
+    if (forgotForm) {
+      forgotForm.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        sendForgotEmail();
+      });
+    }
+    var forgotEmail = $('#forgotEmail');
+    if (forgotEmail) {
+      forgotEmail.addEventListener('input', function () {
+        this.setAttribute('aria-invalid', 'false');
+        var err = $('#forgotEmailErr');
+        if (err) {
+          err.textContent = '';
+          err.hidden = true;
         }
       });
     }
@@ -1375,7 +1872,17 @@ import * as api from './api.js';
       });
     });
 
+    ['#filterFrom', '#filterTo'].forEach(function (sel) {
+      var el = $(sel);
+      if (el) el.addEventListener('change', onFilterDateChange);
+    });
+    var filterSheet = $('#filterSheet');
+    if (filterSheet) {
+      filterSheet.addEventListener('close', function () { state.filterDraft = null; });
+    }
+
     document.addEventListener('click', function (ev) {
+      if (state.busy) return;
       if (ev.target.closest('[data-close]')) {
         var d = ev.target.closest('dialog');
         if (d) d.close();
@@ -1418,10 +1925,31 @@ import * as api from './api.js';
           state.filter = trigger.getAttribute('data-filter');
           render();
           break;
-        case 'approve': approve(id); break;
-        case 'reject': reject(id); break;
+        case 'open-filter': openFilterSheet(); break;
+        case 'filter-person':
+          if (state.filterDraft) {
+            state.filterDraft.person = trigger.getAttribute('data-person');
+            syncFilterSheet();
+          }
+          break;
+        case 'filter-preset':
+          if (state.filterDraft) {
+            var preset = trigger.getAttribute('data-preset');
+            var range = presetRange(preset);
+            state.filterDraft.preset = preset;
+            state.filterDraft.from = range.from;
+            state.filterDraft.to = range.to;
+            syncFilterSheet();
+          }
+          break;
+        case 'filter-reset': resetFilterDraft(); break;
+        case 'filter-apply': applyFilterDraft(); break;
+        case 'clear-filter': clearFilter(state.view, false); break;
+        case 'clear-all-filters': clearFilter(state.view, true); break;
+        case 'approve': approve(id, trigger); break;
+        case 'reject': reject(id, trigger); break;
         case 'ask-buy': openPurchase(id); break;
-        case 'confirm-buy': confirmBuy(id); break;
+        case 'confirm-buy': confirmBuy(id, trigger); break;
         case 'cancel': askCancel(id); break;
         case 'delete-req': askDeleteExpense(id); break;
         case 'delete-income': closeDialog($('#incomeMenu')); askDeleteIncome(id); break;
@@ -1431,14 +1959,21 @@ import * as api from './api.js';
           if (nameInput) {
             var next = nameInput.value.trim();
             if (!next) { nameInput.focus(); break; }
-            api.saveMember({
-              name: next,
-              role: roleInput ? roleInput.value.trim() : ''
-            }).then(async function () {
-              await refreshData(true);
-              closeDialog($('#accountSheet'));
-              toast('Đã lưu thông tin');
-            }).catch(fail);
+            runBusy(trigger, 'Đang lưu…', async function () {
+              try {
+                var role = roleInput ? roleInput.value.trim() : '';
+                await api.saveMember({ name: next, role: role });
+                state.profile.name = next;
+                state.profile.role = role;
+                var mine = findMember(state.user);
+                if (mine) { mine.name = next; mine.role = role; }
+                closeDialog($('#accountSheet'));
+                render();
+                toast('Đã lưu thông tin');
+              } catch (err) {
+                fail(err);
+              }
+            });
           }
           break;
         case 'logout':
@@ -1448,9 +1983,7 @@ import * as api from './api.js';
           showLogin();
           toast('Đã đăng xuất');
           break;
-        case 'forgot':
-          toast('Mở Google Sheet → tab members → sửa cột password để đổi mật khẩu.');
-          break;
+        case 'forgot': openForgotSheet(); break;
         default: break;
       }
     });
@@ -1462,11 +1995,17 @@ import * as api from './api.js';
 
     var confirmBtn = $('#confirmBtn');
     if (confirmBtn) {
-      confirmBtn.addEventListener('click', function () {
+      confirmBtn.addEventListener('click', async function () {
+        if (state.busy) return;
         var fn = confirmAction;
+        if (!fn) return;
         confirmAction = null;
-        closeDialog($('#confirmSheet'));
-        if (fn) fn();
+        var done = setBusy(confirmBtn, confirmBusyLabel);
+        try {
+          await fn();
+        } finally {
+          done();
+        }
       });
     }
   }

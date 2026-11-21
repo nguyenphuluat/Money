@@ -16,6 +16,9 @@ Google Apps Script Web App  ──  Google Sheet
 
 - Không realtime: app tự tải lại mỗi **20 giây** khi tab đang mở.
 - Đăng nhập bằng tài khoản lưu trong tab `members`. Token ký HMAC, hết hạn sau 30 ngày.
+- **Bộ lọc** theo người và khoảng thời gian cho cả Thu nhập và Chi tiêu.
+- **Quên mật khẩu**: gửi mật khẩu về đúng email của tài khoản.
+- Mọi thao tác ghi đều có trạng thái **Đang xử lý…**, khoá nút và chống ghi trùng.
 
 ## Cấu trúc file
 
@@ -42,6 +45,7 @@ apps-script/Code.gs        backend, dán vào Apps Script
 2. Xoá nội dung mặc định, dán toàn bộ `apps-script/Code.gs`.
 3. Bấm **Save** (Ctrl+S).
 4. Nếu được hỏi quyền: **Review permissions → chọn tài khoản → Advanced → Go to project (unsafe) → Allow**. Cảnh báo "unsafe" là bình thường với script tự viết.
+5. Cấp quyền gửi email: ở thanh chọn hàm phía trên, chọn `authorizeMail` → **Run** → **Allow**. Nếu bỏ qua, nút "Quên mật khẩu" sẽ báo lỗi uỷ quyền.
 
 ### 3. Deploy
 
@@ -116,6 +120,13 @@ Không cần cấu hình domain gì thêm — Apps Script không kiểm tra orig
 - Bấm "Đã mua" → `purchased`, tiền bị trừ khỏi số dư.
 - Số dư âm hiển thị `Đang vay` kèm cảnh báo đỏ.
 - Sửa yêu cầu đã duyệt → quay về `pending`, phải duyệt lại.
+
+## Chống ghi trùng và tốc độ
+
+- Khi bấm Lưu/Gửi/Đồng ý, nút bị khoá ngay và hiện spinner `Đang xử lý…`; mọi nút khác trong cùng hộp thoại/thẻ cũng bị khoá. Bấm thêm không tạo thêm bản ghi.
+- Mỗi khoản thu/chi có `id` do trình duyệt sinh ra. Server kiểm tra id: nếu đã tồn tại thì trả `ok` luôn, không ghi thêm — an toàn cả khi mạng retry.
+- Sau khi ghi thành công, app cập nhật danh sách tại chỗ (không tải lại toàn bộ), nên cảm giác nhanh hơn. Dữ liệu của người kia vẫn được đồng bộ mỗi 20 giây.
+- Request có timeout 30 giây; lỗi mạng hiện toast đỏ và mở khoá nút, không treo "Đang xử lý…" mãi.
 
 ## Bảo mật — nói thẳng
 

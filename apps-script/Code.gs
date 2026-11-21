@@ -75,6 +75,10 @@ function handle(body) {
     return doLogin(body.login, body.password);
   }
 
+  if (action === 'forgot') {
+    return doForgot(body.email);
+  }
+
   var me = requireAuth(body.token);
 
   switch (action) {
@@ -124,6 +128,46 @@ function doLogin(loginValue, password) {
     token: signToken({ id: member.id, exp: Date.now() + TOKEN_DAYS * 86400000 }),
     member: member
   };
+}
+
+function doForgot(emailValue) {
+  var login = String(emailValue || '').trim().toLowerCase();
+  if (!login) return { ok: false, error: 'Nhập email tài khoản.' };
+
+  var rows = memberRows();
+  var row = null;
+  for (var i = 0; i < rows.length; i++) {
+    if (str(rows[i].login).trim().toLowerCase() === login) { row = rows[i]; break; }
+  }
+  if (!row) return { ok: false, error: 'Không tìm thấy tài khoản dùng email này.' };
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(str(row.login))) {
+    return { ok: false, error: 'Tài khoản này không dùng email để đăng nhập.' };
+  }
+
+  var cache = CacheService.getScriptCache();
+  var key = 'forgot:' + login;
+  if (cache.get(key)) return { ok: false, error: 'Vừa gửi email rồi. Thử lại sau 5 phút.' };
+
+  MailApp.sendEmail({
+    to: row.login,
+    name: 'Sổ Chi Tiêu Gia Đình',
+    subject: 'Mật khẩu sổ chi tiêu gia đình',
+    htmlBody:
+      '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#0F172A">' +
+      '<p>Xin chào <b>' + escapeHtml(row.name) + '</b>,</p>' +
+      '<p>Mật khẩu đăng nhập sổ chi tiêu của bạn là:</p>' +
+      '<p style="font-size:22px;font-weight:700;letter-spacing:1px;background:#F0FDFA;padding:12px 16px;border-radius:10px;display:inline-block">' + escapeHtml(row.password) + '</p>' +
+      '<p>Mở sổ tại <a href="https://nguyenphuluat.github.io/Money/">https://nguyenphuluat.github.io/Money/</a>.</p>' +
+      '<p style="color:#64748B">Nếu không phải bạn yêu cầu, hãy bỏ qua email này và đổi mật khẩu trong tab <b>members</b>.</p>' +
+      '</div>'
+  });
+
+  cache.put(key, '1', 300);
+  return { ok: true, member: publicMember(row) };
+}
+
+function authorizeMail() {
+  return MailApp.getRemainingDailyQuota();
 }
 
 function requireAuth(token) {
@@ -253,10 +297,13 @@ function updateById(name, id, patch) {
   var rowIndex = findRowByName(name, id);
   if (rowIndex < 0) throw new Error('Không tìm thấy dữ liệu cần sửa.');
   var headers = headersOf(sh);
+  var range = sh.getRange(rowIndex, 1, 1, headers.length);
+  var values = range.getValues()[0];
   Object.keys(patch).forEach(function (key) {
     var col = headers.indexOf(key);
-    if (col >= 0) sh.getRange(rowIndex, col + 1).setValue(patch[key]);
+    if (col >= 0) values[col] = patch[key];
   });
+  range.setValues([values]);
 }
 
 function deleteById(name, id) {
@@ -344,6 +391,18 @@ function cleanAmount(v) {
   return Math.round(n);
 }
 
+function safeId(value) {
+  var s = str(value);
+  if (/^[A-Za-z0-9_-]{8,80}$/.test(s)) return s;
+  return Utilities.getUuid();
+}
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 /* ============================ LIST ============================ */
 
 function doList(me) {
@@ -392,8 +451,11 @@ function doAddIncome(me, body) {
   var member = str(body.member) || me.id;
   if (memberIds().indexOf(member) === -1) throw new Error('Người kiếm không hợp lệ.');
 
+  var id = safeId(body.id);
+  if (findIncome(id)) return { ok: true, duplicate: true };
+
   appendObject('incomes', {
-    id: Utilities.getUuid(),
+    id: id,
     amount: cleanAmount(body.amount),
     date: dayValue(body.date) || dayValue(new Date()),
     member: member,
@@ -449,11 +511,14 @@ function doAddExpense(me, body) {
   if (!title) throw new Error('Nhập tên món cần mua.');
   if (!reason) throw new Error('Nhập lý do mua.');
 
+  var id = safeId(body.id);
+  if (findExpense(id)) return { ok: true, duplicate: true };
+
   var agreed = {};
   memberIds().forEach(function (id) { agreed[id] = id === me.id ? true : null; });
 
   appendObject('expenses', {
-    id: Utilities.getUuid(),
+    id: id,
     title: title.slice(0, 80),
     amount: cleanAmount(body.amount),
     category: str(body.category) || 'other',
@@ -515,7 +580,7 @@ function doApprove(me, body) {
       patch.approvedAt = nowIso();
     }
     updateById('expenses', body.id, patch);
-    return { ok: true, approved: all };
+    return { ok: true, approved: all, approvedAt: patch.approvedAt || '' };
   });
 }
 
@@ -527,13 +592,14 @@ function doReject(me, body) {
   var agreed = parseAgreed(row.agreed);
   agreed[me.id] = false;
 
+  var rejectedAt = nowIso();
   updateById('expenses', body.id, {
     status: 'rejected',
     agreed: JSON.stringify(agreed),
     rejectedBy: me.id,
-    rejectedAt: nowIso()
+    rejectedAt: rejectedAt
   });
-  return { ok: true };
+  return { ok: true, rejectedAt: rejectedAt };
 }
 
 function doCancel(me, body) {
@@ -557,11 +623,12 @@ function doPurchase(me, body) {
   if (!row) throw new Error('Yêu cầu không còn tồn tại.');
   if (str(row.status) !== 'approved') throw new Error('Chỉ ghi nhận đã mua khi yêu cầu đã được duyệt.');
 
+  var purchasedAt = nowIso();
   updateById('expenses', body.id, {
     status: 'purchased',
-    purchasedAt: nowIso()
+    purchasedAt: purchasedAt
   });
-  return { ok: true };
+  return { ok: true, purchasedAt: purchasedAt };
 }
 
 function doDeleteExpense(me, body) {
@@ -579,5 +646,5 @@ function doSaveMember(me, body) {
     name: name.slice(0, 40),
     role: str(body.role).trim().slice(0, 20)
   });
-  return { ok: true };
+  return { ok: true, member: publicMember(memberById(me.id)) };
 }

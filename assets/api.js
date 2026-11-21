@@ -41,16 +41,24 @@ async function post(action, payload) {
   var body = Object.assign({ action: action, token: getToken() }, payload || {});
 
   var res;
+  var controller = new AbortController();
+  var timer = setTimeout(function () { controller.abort(); }, 30000);
   try {
     // text/plain để tránh CORS preflight với Apps Script.
     res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(body),
-      redirect: 'follow'
+      redirect: 'follow',
+      signal: controller.signal
     });
   } catch (err) {
+    if (err && err.name === 'AbortError') {
+      throw new ApiError('Google phản hồi quá lâu. Kiểm tra mạng rồi thử lại.', 'timeout');
+    }
     throw new ApiError('Không kết nối được Google. Kiểm tra mạng rồi thử lại.', 'network');
+  } finally {
+    clearTimeout(timer);
   }
 
   var text = await res.text();
@@ -125,4 +133,8 @@ export function deleteExpense(id) {
 
 export function saveMember(values) {
   return post('saveMember', values);
+}
+
+export function forgotPassword(email) {
+  return post('forgot', { email: email });
 }
