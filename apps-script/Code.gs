@@ -66,8 +66,26 @@ function json(obj) {
 
 /* ========================== DISPATCH ========================== */
 
+var WRITE_ACTIONS = {
+  addIncome: 1,
+  updateIncome: 1,
+  deleteIncome: 1,
+  addExpense: 1,
+  updateExpense: 1,
+  approve: 1,
+  reject: 1,
+  cancel: 1,
+  purchase: 1,
+  deleteExpense: 1,
+  saveMember: 1
+};
+
 function handle(body) {
   var action = String(body.action || '');
+
+  if (action === 'version') {
+    return { ok: true, v: getVersion() };
+  }
 
   if (action === 'login') {
     ensureSheets();
@@ -81,6 +99,19 @@ function handle(body) {
 
   var me = requireAuth(body.token);
 
+  if (WRITE_ACTIONS[action] === 1) {
+    return withLock(function () {
+      var res = dispatch(action, me, body);
+      if (!res) res = { ok: true };
+      res.v = bumpVersion();
+      return res;
+    });
+  }
+
+  return dispatch(action, me, body);
+}
+
+function dispatch(action, me, body) {
   switch (action) {
     case 'list': return doList(me);
     case 'addIncome': return doAddIncome(me, body);
@@ -125,7 +156,7 @@ function doLogin(loginValue, password) {
   var member = publicMember(row);
   return {
     ok: true,
-    token: signToken({ id: member.id, exp: Date.now() + TOKEN_DAYS * 86400000 }),
+    token: signToken({ id: member.id, ver: passVersion(row.password), exp: Date.now() + TOKEN_DAYS * 86400000 }),
     member: member
   };
 }
@@ -183,6 +214,11 @@ function requireAuth(token) {
     err2.code = 'auth';
     throw err2;
   }
+  if (!payload.ver || payload.ver !== passVersion(row.password)) {
+    var err3 = new Error('Mật khẩu đã thay đổi. Đăng nhập lại.');
+    err3.code = 'auth';
+    throw err3;
+  }
   return publicMember(row);
 }
 
@@ -194,6 +230,22 @@ function getSecret() {
     props.setProperty('TOKEN_SECRET', secret);
   }
   return secret;
+}
+
+function passVersion(password) {
+  var sig = Utilities.computeHmacSha256Signature(String(password || ''), getSecret());
+  return Utilities.base64EncodeWebSafe(sig).slice(0, 22);
+}
+
+function getVersion() {
+  return PropertiesService.getScriptProperties().getProperty('DATA_VERSION') || '1';
+}
+
+function bumpVersion() {
+  var props = PropertiesService.getScriptProperties();
+  var next = Number(props.getProperty('DATA_VERSION') || '1') + 1;
+  props.setProperty('DATA_VERSION', String(next));
+  return next;
 }
 
 function signToken(payload) {
@@ -397,6 +449,11 @@ function safeId(value) {
   return Utilities.getUuid();
 }
 
+function safeText(value) {
+  var s = str(value);
+  return /^[=+\-@]/.test(s) ? '\u200B' + s : s;
+}
+
 function escapeHtml(value) {
   return String(value == null ? '' : value)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -408,6 +465,7 @@ function escapeHtml(value) {
 function doList(me) {
   return {
     ok: true,
+    v: getVersion(),
     me: me,
     members: memberRows()
       .sort(function (a, b) { return num(a.order) - num(b.order); })
@@ -459,7 +517,7 @@ function doAddIncome(me, body) {
     amount: cleanAmount(body.amount),
     date: dayValue(body.date) || dayValue(new Date()),
     member: member,
-    note: str(body.note).slice(0, 120),
+    note: safeText(body.note).slice(0, 120),
     createdBy: me.id,
     createdAt: nowIso()
   });
@@ -476,7 +534,7 @@ function doUpdateIncome(me, body) {
     amount: cleanAmount(body.amount),
     date: dayValue(body.date) || dayValue(new Date()),
     member: member,
-    note: str(body.note).slice(0, 120)
+    note: safeText(body.note).slice(0, 120)
   });
   return { ok: true };
 }
@@ -506,8 +564,8 @@ function findExpense(id) {
 }
 
 function doAddExpense(me, body) {
-  var title = str(body.title).trim();
-  var reason = str(body.reason).trim();
+  var title = safeText(str(body.title).trim());
+  var reason = safeText(str(body.reason).trim());
   if (!title) throw new Error('Nhập tên món cần mua.');
   if (!reason) throw new Error('Nhập lý do mua.');
 
@@ -542,10 +600,10 @@ function doUpdateExpense(me, body) {
   }
 
   var patch = {
-    title: str(body.title).trim().slice(0, 80),
+    title: safeText(str(body.title).trim()).slice(0, 80),
     amount: cleanAmount(body.amount),
     category: str(body.category) || 'other',
-    reason: str(body.reason).trim().slice(0, 300)
+    reason: safeText(str(body.reason).trim()).slice(0, 300)
   };
   if (!patch.title) throw new Error('Nhập tên món cần mua.');
   if (!patch.reason) throw new Error('Nhập lý do mua.');
@@ -563,25 +621,23 @@ function doUpdateExpense(me, body) {
 }
 
 function doApprove(me, body) {
-  return withLock(function () {
-    var row = findExpense(body.id);
-    if (!row) throw new Error('Yêu cầu không còn tồn tại.');
-    if (str(row.status) !== 'pending') throw new Error('Yêu cầu đã được xử lý.');
+  var row = findExpense(body.id);
+  if (!row) throw new Error('Yêu cầu không còn tồn tại.');
+  if (str(row.status) !== 'pending') throw new Error('Yêu cầu đã được xử lý.');
 
-    var agreed = parseAgreed(row.agreed);
-    agreed[me.id] = true;
+  var agreed = parseAgreed(row.agreed);
+  agreed[me.id] = true;
 
-    var ids = memberIds();
-    var all = ids.length >= 2 && ids.every(function (id) { return agreed[id] === true; });
+  var ids = memberIds();
+  var all = ids.length >= 2 && ids.every(function (id) { return agreed[id] === true; });
 
-    var patch = { agreed: JSON.stringify(agreed) };
-    if (all) {
-      patch.status = 'approved';
-      patch.approvedAt = nowIso();
-    }
-    updateById('expenses', body.id, patch);
-    return { ok: true, approved: all, approvedAt: patch.approvedAt || '' };
-  });
+  var patch = { agreed: JSON.stringify(agreed) };
+  if (all) {
+    patch.status = 'approved';
+    patch.approvedAt = nowIso();
+  }
+  updateById('expenses', body.id, patch);
+  return { ok: true, approved: all, approvedAt: patch.approvedAt || '' };
 }
 
 function doReject(me, body) {
@@ -643,8 +699,63 @@ function doSaveMember(me, body) {
   var name = str(body.name).trim();
   if (!name) throw new Error('Tên không được để trống.');
   updateById('members', me.id, {
-    name: name.slice(0, 40),
-    role: str(body.role).trim().slice(0, 20)
+    name: safeText(name).slice(0, 40),
+    role: safeText(str(body.role).trim()).slice(0, 20)
   });
   return { ok: true, member: publicMember(memberById(me.id)) };
+}
+
+/* =========================== BACKUP =========================== */
+
+var BACKUP_FOLDER = 'Sổ Chi Tiêu - Backups';
+var BACKUP_KEEP = 12;
+
+function onOpen() {
+  try {
+    SpreadsheetApp.getUi().createMenu('Sổ Chi Tiêu')
+      .addItem('Sao lưu ngay', 'backupNow')
+      .addItem('Bật sao lưu hàng tháng', 'installBackupTrigger')
+      .addToUi();
+  } catch (err) { /* ignore */ }
+}
+
+function backupNow() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) throw new Error('Không tìm thấy bảng tính.');
+  var folder = getBackupFolder_();
+  var stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HHmm');
+  var copy = DriveApp.getFileById(ss.getId()).makeCopy('Sổ Chi Tiêu - ' + stamp, folder);
+  pruneBackups_(folder);
+  return 'Đã sao lưu: ' + copy.getName();
+}
+
+function getBackupFolder_() {
+  var it = DriveApp.getFoldersByName(BACKUP_FOLDER);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(BACKUP_FOLDER);
+}
+
+function pruneBackups_(folder) {
+  var files = [];
+  var it = folder.getFiles();
+  while (it.hasNext()) {
+    var f = it.next();
+    if (f.getName().indexOf('Sổ Chi Tiêu - ') === 0) files.push(f);
+  }
+  files.sort(function (a, b) { return b.getDateCreated().getTime() - a.getDateCreated().getTime(); });
+  for (var i = BACKUP_KEEP; i < files.length; i++) files[i].setTrashed(true);
+}
+
+function installBackupTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'backupNow') ScriptApp.deleteTrigger(triggers[i]);
+  }
+  ScriptApp.newTrigger('backupNow').timeBased().onMonthDay(1).atHour(3).create();
+  return 'Đã tạo lịch sao lưu ngày 1 hàng tháng lúc 03:00.';
+}
+
+function setupBackup() {
+  var msg = backupNow();
+  installBackupTrigger();
+  return msg + ' · Đã bật lịch hàng tháng.';
 }

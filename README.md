@@ -14,7 +14,7 @@ Google Apps Script Web App  ──  Google Sheet
     - trả JSON                     expenses
 ```
 
-- Không realtime: app tự tải lại mỗi **30 giây** khi tab đang mở.
+- Không realtime: app chỉ hỏi **version** mỗi 60 giây; dữ liệu chỉ tải khi version đổi. Quay lại tab thì kiểm tra ngay.
 - Đăng nhập bằng tài khoản lưu trong tab `members`. Token ký HMAC, hết hạn sau 30 ngày.
 - **Bộ lọc** theo người và khoảng thời gian cho cả Thu nhập và Chi tiêu.
 - **Quên mật khẩu**: gửi mật khẩu về đúng email của tài khoản.
@@ -125,7 +125,7 @@ Không cần cấu hình domain gì thêm — Apps Script không kiểm tra orig
 
 - Khi bấm Lưu/Gửi/Đồng ý, nút bị khoá ngay và hiện spinner `Đang xử lý…`; mọi nút khác trong cùng hộp thoại/thẻ cũng bị khoá. Bấm thêm không tạo thêm bản ghi.
 - Mỗi khoản thu/chi có `id` do trình duyệt sinh ra. Server kiểm tra id: nếu đã tồn tại thì trả `ok` luôn, không ghi thêm — an toàn cả khi mạng retry.
-- Sau khi ghi thành công, app cập nhật danh sách tại chỗ (không tải lại toàn bộ), nên cảm giác nhanh hơn. Dữ liệu của người kia vẫn được đồng bộ mỗi 30 giây.
+- Sau khi ghi thành công, app cập nhật danh sách tại chỗ (không tải lại toàn bộ), nên cảm giác nhanh hơn. Người kia thấy thay đổi khi version đổi (kiểm tra mỗi 60 giây hoặc khi quay lại tab).
 - Request có timeout 30 giây; lỗi mạng hiện toast đỏ và mở khoá nút, không treo "Đang xử lý…" mãi.
 
 ## Bảo mật — nói thẳng
@@ -140,12 +140,29 @@ Không cần cấu hình domain gì thêm — Apps Script không kiểm tra orig
 
 | Điều | Thực tế |
 |---|---|
-| Realtime | Không. Tối đa 30 giây mới thấy thay đổi của người kia |
-| Tốc độ | Mỗi thao tác 0,5–2 giây |
-| Ghi đồng thời | `LockService` xếp hàng, không hỏng dữ liệu |
+| Realtime | Không. Tối đa 60 giây mới thấy thay đổi của người kia (chỉ tải khi có thay đổi) |
+| Tốc độ | Mỗi thao tác 0,5–4 giây |
+| Ghi đồng thời | `LockService` khoá mọi thao tác ghi |
 | Sửa tay Sheet | Được, nhưng **không xoá dòng tiêu đề**, không đổi `id`, `status` phải đúng 5 giá trị |
-| Quota Apps Script | 6 phút mỗi lần chạy, 30 lần đồng thời. App không dùng trigger nên không tốn quota 90 phút/ngày |
+| Quota Apps Script | 6 phút mỗi lần chạy, 30 lần đồng thời. App không dùng trigger định kỳ (trừ backup tháng) |
 | Giới hạn ô Sheet | 10 triệu ô — vài chục năm mới hết |
+
+## Đồng bộ khi có thay đổi
+
+Không tải toàn bộ dữ liệu định kỳ. Mỗi lần ghi, backend tăng một biến `DATA_VERSION` trong Script Properties. Client:
+
+1. Mở app → tải dữ liệu một lần, lưu version.
+2. Mỗi 60 giây (chỉ khi tab đang hiện) → gọi `version`, chỉ một con số.
+3. Version khác → mới gọi `list` tải dữ liệu.
+4. Quay lại tab hoặc cửa sổ được focus → kiểm tra ngay.
+5. Sau khi tự ghi, client lấy version từ response nên không tự trigger tải lại.
+
+## Sao lưu
+
+- Mỗi lần ghi, dữ liệu nằm trong Google Sheet; Google giữ version history ~30 ngày.
+- Thêm bản sao độc lập: menu **Sổ Chi Tiêu → Sao lưu ngay** trong Google Sheet.
+- **Sổ Chi Tiêu → Bật sao lưu hàng tháng** tạo trigger ngày 1 hàng tháng, giữ 12 bản gần nhất trong thư mục `Sổ Chi Tiêu - Backups`.
+- Lần đầu chạy cần cấp quyền Google Drive (Apps Script yêu cầu quyền Drive đầy đủ).
 
 ## Giới hạn GitHub Pages & Google (2026)
 
@@ -183,10 +200,10 @@ Tab `expenses` có 15 cột → 10 triệu ô tương đương **~666.000 dòng*
 | Email gửi đi | 100 người nhận/ngày (dùng cho Quên mật khẩu) |
 | URL Fetch | 20.000/ngày — app không dùng |
 
-App chỉ dùng web app request. Mỗi request đọc 3 tab và trả JSON, thường 0,5–2 giây. Poll 30 giây:
+App chỉ dùng web app request. Mỗi 60 giây client chỉ gọi `version` (một con số, không đọc Sheet); chỉ khi version đổi mới gọi `list` đọc 3 tab và trả JSON.
 
-- 2 người mở 4 giờ/ngày: ~960 request/ngày.
-- 2 người mở 8 giờ/ngày: ~1.920 request/ngày.
+- 2 người mở 4 giờ/ngày: ~480 lần kiểm tra version/ngày + vài lần tải dữ liệu.
+- 2 người mở 8 giờ/ngày: ~960 lần kiểm tra version/ngày + vài lần tải dữ liệu.
 
 Ràng buộc thực tế là 6 phút/lần chạy và 30 request đồng thời — cả hai đều rất xa.
 
@@ -211,6 +228,6 @@ Nếu chọn "New deployment" mỗi lần thì URL đổi, phải dán lại và
 | "Google trả về dữ liệu không hợp lệ" | Đang mở nhầm URL `/dev` thay vì `/exec` |
 | "Sai tên đăng nhập hoặc mật khẩu" | Xem lại cột `login` và `password` trong tab `members` |
 | Đăng nhập được nhưng bảng trống | Chưa có dữ liệu; thêm khoản thu đầu tiên |
-| Máy kia không thấy thay đổi | Đợi 30 giây, hoặc chuyển tab đi rồi quay lại để app tải lại |
+| Máy kia không thấy thay đổi | Đợi 60 giây, hoặc chuyển tab đi rồi quay lại để app kiểm tra version |
 | Apps Script báo "Authorization required" | Mở Apps Script, chạy thử một hàm bất kỳ rồi Allow |
 | Sửa `Code.gs` nhưng app không đổi | Chưa deploy **New version** |

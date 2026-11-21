@@ -5,6 +5,7 @@
 
 var API_URL = 'https://script.google.com/macros/s/AKfycbyiD_8tFN_saVuuYvHHkkxs1H2Pw2BCqFQ0Ca7k8va3f6Zv_HLTvRy8lAYhN6cELnTNgg/exec';
 var TOKEN_KEY = 'sochitieu.token';
+var lastVersion = null;
 
 export class ApiError extends Error {
   constructor(message, code) {
@@ -74,7 +75,16 @@ async function post(action, payload) {
     if (code === 'auth') setToken('');
     throw new ApiError((data && data.error) || 'Có lỗi xảy ra.', code);
   }
+  if (data.v !== undefined) lastVersion = String(data.v);
   return data;
+}
+
+export function currentVersion() {
+  return lastVersion;
+}
+
+export function version() {
+  return post('version', {});
 }
 
 export async function login(loginValue, password) {

@@ -1,5 +1,5 @@
 /* Sổ Chi Tiêu Gia Đình — giao diện OpenDesign, dữ liệu Google Sheet qua Apps Script */
-import * as api from './api.js?v=20261122a';
+import * as api from './api.js?v=20261122b';
 
 (function () {
   'use strict';
@@ -193,7 +193,9 @@ import * as api from './api.js?v=20261122a';
     incomeMember: null,
     pollTimer: null,
     refreshing: false,
-    lastSync: 0
+    lastSync: 0,
+    version: null,
+    checking: false
   };
 
   function compute() {
@@ -1101,6 +1103,7 @@ import * as api from './api.js?v=20261122a';
     closeDialog($('#incomeMenu'));
     closeDialog($('#expenseSheet'));
     closeDialog($('#purchaseSheet'));
+    state.version = api.currentVersion() || state.version;
     render();
     requestAnimationFrame(focusPage);
   }
@@ -1689,6 +1692,8 @@ import * as api from './api.js?v=20261122a';
     state.incomeMember = null;
     state.filter = 'all';
     state.refreshing = false;
+    state.version = null;
+    state.checking = false;
     state.filters = {
       income: { person: 'all', preset: 'all', from: '', to: '' },
       expenses: { person: 'all', preset: 'all', from: '', to: '' }
@@ -1705,6 +1710,7 @@ import * as api from './api.js?v=20261122a';
     state.data.expenses = data.expenses || [];
     state.loading = false;
     state.lastSync = Date.now();
+    if (data.v !== undefined) state.version = String(data.v);
   }
 
   var refreshPromise = null;
@@ -1741,11 +1747,31 @@ import * as api from './api.js?v=20261122a';
     api.logout();
   }
 
-  function startPolling() {
+  function startVersionWatch() {
     if (state.pollTimer) clearInterval(state.pollTimer);
     state.pollTimer = setInterval(function () {
-      if (document.visibilityState === 'visible' && state.loggedIn && !state.refreshing) refreshData(false);
-    }, 30000);
+      if (document.visibilityState === 'visible' && state.loggedIn && !state.refreshing && !state.busy) {
+        checkForChanges(false);
+      }
+    }, 60000);
+  }
+
+  async function checkForChanges(force) {
+    if (!state.loggedIn || state.checking || state.loading) return;
+    state.checking = true;
+    try {
+      var res = await api.version();
+      if (force || String(res.v) !== String(state.version)) {
+        await refreshData(false);
+      }
+    } catch (err) {
+      if (err && err.code === 'auth') {
+        stopSession();
+        showAccessDenied('Phiên đăng nhập đã hết. Đăng nhập lại nhé.');
+      }
+    } finally {
+      state.checking = false;
+    }
   }
 
   async function startSession() {
@@ -1754,7 +1780,7 @@ import * as api from './api.js?v=20261122a';
       var data = await api.load();
       applyData(data);
       render();
-      startPolling();
+      startVersionWatch();
     } catch (err) {
       if (err && err.code === 'auth') {
         stopSession();
@@ -1963,6 +1989,7 @@ import * as api from './api.js?v=20261122a';
               try {
                 var role = roleInput ? roleInput.value.trim() : '';
                 await api.saveMember({ name: next, role: role });
+                state.version = api.currentVersion() || state.version;
                 state.profile.name = next;
                 state.profile.role = role;
                 var mine = findMember(state.user);
@@ -2014,7 +2041,11 @@ import * as api from './api.js?v=20261122a';
     bindEvents();
 
     document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState === 'visible' && state.loggedIn) refreshData(false);
+      if (document.visibilityState === 'visible' && state.loggedIn) checkForChanges(false);
+    });
+
+    window.addEventListener('focus', function () {
+      if (state.loggedIn) checkForChanges(false);
     });
 
     if (!api.isConfigured()) {
