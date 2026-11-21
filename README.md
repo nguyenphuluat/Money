@@ -14,7 +14,7 @@ Google Apps Script Web App  ──  Google Sheet
     - trả JSON                     expenses
 ```
 
-- Không realtime: app tự tải lại mỗi **20 giây** khi tab đang mở.
+- Không realtime: app tự tải lại mỗi **30 giây** khi tab đang mở.
 - Đăng nhập bằng tài khoản lưu trong tab `members`. Token ký HMAC, hết hạn sau 30 ngày.
 - **Bộ lọc** theo người và khoảng thời gian cho cả Thu nhập và Chi tiêu.
 - **Quên mật khẩu**: gửi mật khẩu về đúng email của tài khoản.
@@ -125,7 +125,7 @@ Không cần cấu hình domain gì thêm — Apps Script không kiểm tra orig
 
 - Khi bấm Lưu/Gửi/Đồng ý, nút bị khoá ngay và hiện spinner `Đang xử lý…`; mọi nút khác trong cùng hộp thoại/thẻ cũng bị khoá. Bấm thêm không tạo thêm bản ghi.
 - Mỗi khoản thu/chi có `id` do trình duyệt sinh ra. Server kiểm tra id: nếu đã tồn tại thì trả `ok` luôn, không ghi thêm — an toàn cả khi mạng retry.
-- Sau khi ghi thành công, app cập nhật danh sách tại chỗ (không tải lại toàn bộ), nên cảm giác nhanh hơn. Dữ liệu của người kia vẫn được đồng bộ mỗi 20 giây.
+- Sau khi ghi thành công, app cập nhật danh sách tại chỗ (không tải lại toàn bộ), nên cảm giác nhanh hơn. Dữ liệu của người kia vẫn được đồng bộ mỗi 30 giây.
 - Request có timeout 30 giây; lỗi mạng hiện toast đỏ và mở khoá nút, không treo "Đang xử lý…" mãi.
 
 ## Bảo mật — nói thẳng
@@ -140,12 +140,61 @@ Không cần cấu hình domain gì thêm — Apps Script không kiểm tra orig
 
 | Điều | Thực tế |
 |---|---|
-| Realtime | Không. Tối đa 20 giây mới thấy thay đổi của người kia |
+| Realtime | Không. Tối đa 30 giây mới thấy thay đổi của người kia |
 | Tốc độ | Mỗi thao tác 0,5–2 giây |
 | Ghi đồng thời | `LockService` xếp hàng, không hỏng dữ liệu |
 | Sửa tay Sheet | Được, nhưng **không xoá dòng tiêu đề**, không đổi `id`, `status` phải đúng 5 giá trị |
-| Quota Apps Script | 90 phút chạy/ngày (tài khoản Gmail), 6 phút mỗi lần chạy. Poll 20 giây, 2 người dùng không tới 1 giờ/ngày |
+| Quota Apps Script | 6 phút mỗi lần chạy, 30 lần đồng thời. App không dùng trigger nên không tốn quota 90 phút/ngày |
 | Giới hạn ô Sheet | 10 triệu ô — vài chục năm mới hết |
+
+## Giới hạn GitHub Pages & Google (2026)
+
+### GitHub Pages
+
+| Hạng mục | Giới hạn |
+|---|---|
+| Dung lượng site | 1 GB |
+| Băng thông | **100 GB/tháng** — giới hạn mềm |
+| Build | 10 lần/giờ (deploy từ branch); không áp dụng nếu dùng GitHub Actions |
+| Repo | Phải public với tài khoản Free |
+| Mục đích | Không dùng cho web thương mại/SaaS |
+
+Toàn bộ app chỉ **391 KB** (đã tính cả 12 file font). Một lượt mở đầu tải khoảng 300 KB; các lần sau lấy từ cache. 100 GB/tháng tương đương **~300.000 lượt mở đầu tiên/tháng** (~10.000 lượt/ngày). Hai người dùng không thể chạm tới.
+
+Nếu vượt, GitHub không gửi hoá đơn: họ có thể trả `429`, hoặc gửi email đề nghị giảm tải.
+
+### Google Sheet
+
+| Hạng mục | Giới hạn |
+|---|---|
+| Ô mỗi bảng tính | 10 triệu ô |
+| Ký tự mỗi ô | 50.000 |
+| Dung lượng Drive | 15 GB (miễn phí) |
+
+Tab `expenses` có 15 cột → 10 triệu ô tương đương **~666.000 dòng**. Với 2 người, vài chục năm mới tới.
+
+### Google Apps Script (tài khoản Gmail)
+
+| Hạng mục | Giới hạn |
+|---|---|
+| Thời gian mỗi lần chạy | 6 phút |
+| Chạy đồng thời | 30 |
+| Tổng thời gian trigger/ngày | 90 phút — app **không dùng trigger** |
+| Email gửi đi | 100 người nhận/ngày (dùng cho Quên mật khẩu) |
+| URL Fetch | 20.000/ngày — app không dùng |
+
+App chỉ dùng web app request. Mỗi request đọc 3 tab và trả JSON, thường 0,5–2 giây. Poll 30 giây:
+
+- 2 người mở 4 giờ/ngày: ~960 request/ngày.
+- 2 người mở 8 giờ/ngày: ~1.920 request/ngày.
+
+Ràng buộc thực tế là 6 phút/lần chạy và 30 request đồng thời — cả hai đều rất xa.
+
+### Theo dõi
+
+- GitHub: repo → **Insights → Traffic** (lượt xem 14 ngày gần nhất).
+- Apps Script: **Executions** (nhật ký chạy, thời gian).
+- Google Sheet: không cần theo dõi.
 
 ## Sửa backend sau này
 
@@ -162,6 +211,6 @@ Nếu chọn "New deployment" mỗi lần thì URL đổi, phải dán lại và
 | "Google trả về dữ liệu không hợp lệ" | Đang mở nhầm URL `/dev` thay vì `/exec` |
 | "Sai tên đăng nhập hoặc mật khẩu" | Xem lại cột `login` và `password` trong tab `members` |
 | Đăng nhập được nhưng bảng trống | Chưa có dữ liệu; thêm khoản thu đầu tiên |
-| Máy kia không thấy thay đổi | Đợi 20 giây, hoặc chuyển tab đi rồi quay lại để app tải lại |
+| Máy kia không thấy thay đổi | Đợi 30 giây, hoặc chuyển tab đi rồi quay lại để app tải lại |
 | Apps Script báo "Authorization required" | Mở Apps Script, chạy thử một hàm bất kỳ rồi Allow |
 | Sửa `Code.gs` nhưng app không đổi | Chưa deploy **New version** |

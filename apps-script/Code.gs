@@ -67,15 +67,15 @@ function json(obj) {
 /* ========================== DISPATCH ========================== */
 
 function handle(body) {
-  ensureSheets();
-
   var action = String(body.action || '');
 
   if (action === 'login') {
+    ensureSheets();
     return doLogin(body.login, body.password);
   }
 
   if (action === 'forgot') {
+    ensureSheets();
     return doForgot(body.email);
   }
 

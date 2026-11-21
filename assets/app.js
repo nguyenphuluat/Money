@@ -1,5 +1,5 @@
 /* Sổ Chi Tiêu Gia Đình — giao diện OpenDesign, dữ liệu Google Sheet qua Apps Script */
-import * as api from './api.js?v=20261121b';
+import * as api from './api.js?v=20261121c';
 
 (function () {
   'use strict';
@@ -1745,7 +1745,7 @@ import * as api from './api.js?v=20261121b';
     if (state.pollTimer) clearInterval(state.pollTimer);
     state.pollTimer = setInterval(function () {
       if (document.visibilityState === 'visible' && state.loggedIn && !state.refreshing) refreshData(false);
-    }, 20000);
+    }, 30000);
   }
 
   async function startSession() {
