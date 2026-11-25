@@ -1,22 +1,21 @@
 /* Sổ Chi Tiêu Gia Đình — service worker cho PWA */
-var CACHE = 'sochitieu-v20261126a';
+var CACHE = 'sochitieu-v20261127b';
 var SHELL = [
-  './',
   './index.html',
-  './assets/app.css?v=20261126a',
-  './assets/app.js?v=20261126a',
-  './assets/api.js?v=20261126a',
+  './assets/app.min.css?v=20261127a',
+  './assets/app.min.js?v=20261127a',
   './assets/favicon.svg',
-  './assets/icon-192.png',
-  './assets/icon-512.png',
-  './assets/icon-maskable-512.png',
   './manifest.json'
 ];
 
 self.addEventListener('install', function (event) {
   event.waitUntil(
     caches.open(CACHE).then(function (cache) {
-      return cache.addAll(SHELL);
+      // cache: 'reload' để không lấy index/CSS/JS cũ từ HTTP cache khi deploy bản mới.
+      var requests = SHELL.map(function (url) {
+        return new Request(new URL(url, self.location.href).href, { cache: 'reload' });
+      });
+      return cache.addAll(requests);
     }).then(function () {
       return self.skipWaiting();
     })
@@ -45,15 +44,18 @@ self.addEventListener('fetch', function (event) {
   if (url.origin !== location.origin) return;
 
   if (req.mode === 'navigate') {
+    // Trang chủ dùng cache để giảm tải GitHub; SW mới sẽ thay cache khi deploy.
+    // Trang đặt lại mật khẩu cần token mới nên luôn đi mạng.
+    if (url.pathname.indexOf('/reset-password.html') !== -1) {
+      event.respondWith(fetch(req));
+      return;
+    }
     event.respondWith(
-      fetch(req).then(function (res) {
-        var copy = res.clone();
-        caches.open(CACHE).then(function (cache) {
-          cache.put('./index.html', copy);
+      caches.match(req).then(function (cached) {
+        if (cached) return cached;
+        return caches.match('./index.html').then(function (fallback) {
+          return fallback || fetch(req);
         });
-        return res;
-      }).catch(function () {
-        return caches.match('./index.html');
       })
     );
     return;

@@ -1,5 +1,5 @@
 /* Sổ Chi Tiêu Gia Đình — giao diện OpenDesign, dữ liệu Google Sheet qua Apps Script */
-import * as api from './api.js?v=20261126a';
+import * as api from './api.js?v=20261127a';
 
 (function () {
   'use strict';
@@ -29,7 +29,8 @@ import * as api from './api.js?v=20261126a';
     { id: 'travel', label: 'Du lịch', group: 'spend', color: 'var(--chart-12)' },
     { id: 'other', label: 'Khác', group: 'spend', color: 'var(--chart-6)' },
     { id: 'lend', label: 'Cho vay', group: 'debt', color: 'var(--chart-10)', auto: true },
-    { id: 'repay', label: 'Trả nợ', group: 'debt', color: 'var(--chart-12)', auto: true }
+    { id: 'repay', label: 'Trả nợ', group: 'debt', color: 'var(--chart-12)', auto: true },
+    { id: 'loan_interest', label: 'Lãi đi vay', group: 'debt', color: 'var(--chart-5)', auto: true }
   ];
 
   var INCOME_CATEGORIES = [
@@ -41,7 +42,8 @@ import * as api from './api.js?v=20261126a';
     { id: 'other_income', label: 'Thu nhập khác', group: 'income', color: 'var(--chart-6)' },
     { id: 'refund', label: 'Hoàn tiền', group: 'other', color: 'var(--chart-7)' },
     { id: 'collect', label: 'Thu nợ', group: 'other', color: 'var(--chart-8)', auto: true },
-    { id: 'borrow', label: 'Đi vay', group: 'other', color: 'var(--chart-9)', auto: true }
+    { id: 'borrow', label: 'Đi vay', group: 'other', color: 'var(--chart-9)', auto: true },
+    { id: 'loan_interest', label: 'Lãi cho vay', group: 'income', color: 'var(--chart-4)', auto: true }
   ];
 
   var CATEGORY_GROUP_LABELS = {
@@ -116,29 +118,24 @@ import * as api from './api.js?v=20261126a';
     clock: '<circle cx="12" cy="12" r="8.4"/><path d="M12 7.6V12l3 1.9"/>',
     x: '<path d="M6 6l12 12M18 6 6 18"/>',
     slash: '<circle cx="12" cy="12" r="8.4"/><path d="m6.8 6.8 10.4 10.4"/>',
-    cart: '<circle cx="9.2" cy="19.8" r="1.3"/><circle cx="18" cy="19.8" r="1.3"/><path d="M3 4.2h2.3l2.4 11h10.1l2.2-8H6.1"/>',
+    cart: '<path d="M5 8h14l-1.1 12H6.1L5 8Z"/><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/>',
     trash: '<path d="M4 7h16"/><path d="M9.2 7V4.4h5.6V7"/><path d="M6.4 7l.8 13h9.6l.8-13"/><path d="M10 11v5M14 11v5"/>',
     pencil: '<path d="M4 20h4L19.2 8.8a2.8 2.8 0 0 0-4-4L4 16v4Z"/><path d="m13.6 6.4 4 4"/>',
     more: '<circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
     alert: '<path d="M12 4 3.2 20h17.6L12 4Z"/><path d="M12 10.2v4"/><path d="M12 17.3v.1"/>',
     user: '<circle cx="12" cy="8" r="3.5"/><path d="M5.2 20c.8-3.5 3.5-5.4 6.8-5.4s6 1.9 6.8 5.4"/>',
     logout: '<path d="M14 5H6.5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1H14"/><path d="M17 8.4 20.6 12 17 15.6"/><path d="M10.2 12h10.2"/>',
-    calendar: '<rect x="3.6" y="5" width="16.8" height="15.4" rx="2.6"/><path d="M8.2 3v4M15.8 3v4M3.6 10h16.8"/>',
     info: '<circle cx="12" cy="12" r="8.4"/><path d="M12 11v5"/><path d="M12 8.1v.1"/>',
-    coin: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9"/><path d="M14.5 9.4c-.5-.8-1.4-1.2-2.5-1.2-1.5 0-2.6.8-2.6 2 0 1.2 1.1 1.7 2.6 2.1 1.6.4 2.8.9 2.8 2.2 0 1.3-1.2 2.1-2.9 2.1-1.2 0-2.2-.5-2.8-1.4"/>',
-    filter: '<path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/>',
+    coin: '<ellipse cx="12" cy="7.5" rx="6.5" ry="3"/><path d="M5.5 7.5v4c0 1.7 2.9 3 6.5 3s6.5-1.3 6.5-3v-4"/><path d="M5.5 11.5v4c0 1.7 2.9 3 6.5 3s6.5-1.3 6.5-3v-4"/>',
     arrowRight: '<path d="M9 6l6 6-6 6"/>',
     arrowLeft: '<path d="M15 6l-6 6 6 6"/>',
     search: '<circle cx="10.8" cy="10.8" r="6.4"/><path d="m15.6 15.6 4.4 4.4"/>',
     bolt: '<path d="M13 2.5 4.5 14H11l-1 7.5L19.5 10H13z"/>',
-    loan: '<path d="M3.5 10 12 4l8.5 6"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-5h5v5"/>',
+    loan: '<path d="M3.5 7A2.5 2.5 0 0 1 6 4.5h13.5v15H6A2.5 2.5 0 0 1 3.5 17z"/><path d="M20 10h-5.5a2 2 0 0 0 0 4H20"/>',
     report: '<path d="M4 20V11M10 20V4M16 20v-6M22 20H2"/>',
     download: '<path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 20h14"/>',
-    target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/>',
-    wallet: '<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H19v14H6.5A2.5 2.5 0 0 1 4 16.5z"/><path d="M19 10h-5a2 2 0 0 0 0 4h5"/>',
     eye: '<path d="M2.8 12S6.4 5.6 12 5.6 21.2 12 21.2 12 17.6 18.4 12 18.4 2.8 12 2.8 12Z"/><circle cx="12" cy="12" r="3.1"/>',
-    eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 6.3A10.9 10.9 0 0 1 12 6.2c5.6 0 9.2 5.8 9.2 5.8a17.6 17.6 0 0 1-3.4 3.6"/><path d="M6.3 6.7C3.9 8.4 2.8 12 2.8 12s3.6 6.4 9.2 6.4c1.5 0 2.8-.3 4-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
-    lock: '<rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>'
+    eyeOff: '<path d="m3 3 18 18"/><path d="M10.6 10.6a3 3 0 0 0 4.2 4.2"/><path d="M9.9 6.5A10 10 0 0 1 12 6.2c5.6 0 9.2 5.8 9.2 5.8a17.5 17.5 0 0 1-3.4 4.1"/><path d="M6.6 6.6C3.9 8.4 2.8 12 2.8 12s3.6 6.4 9.2 6.4c1.8 0 3.2-.4 4.4-1.1"/>'
   };
 
   function icon(name, size) {
@@ -273,7 +270,11 @@ import * as api from './api.js?v=20261126a';
     incomeMember: null,
     editingLoan: null,
     payingLoan: null,
+    interestLoan: null,
+    interestEntry: null,
+    interestMode: 'pay',
     loanType: 'lend',
+    loanTerm: 'open',
     loanFilter: 'all',
     reportMonth: monthKey(new Date().toISOString()),
     searchTimer: null,
@@ -399,17 +400,19 @@ import * as api from './api.js?v=20261126a';
     }).sort(function (a, b) { return atTime(b.created) - atTime(a.created); });
   }
   var toastTimer = null;
+  var toastHideTimer = null;
   function toast(message, isError) {
     var el = $('#toast');
     if (!el) return;
+    clearTimeout(toastTimer);
+    clearTimeout(toastHideTimer);
     el.innerHTML = icon(isError ? 'alert' : 'check', 16) + '<span>' + esc(message) + '</span>';
     el.classList.toggle('is-error', Boolean(isError));
     el.hidden = false;
     requestAnimationFrame(function () { el.classList.add('is-visible'); });
-    clearTimeout(toastTimer);
     toastTimer = setTimeout(function () {
       el.classList.remove('is-visible');
-      setTimeout(function () { el.hidden = true; }, 220);
+      toastHideTimer = setTimeout(function () { el.hidden = true; }, 220);
     }, 3200);
   }
   function fail(err) {
@@ -2220,10 +2223,15 @@ import * as api from './api.js?v=20261126a';
     var err = $('#forgotEmailErr');
     var submit = $('#forgotSubmit');
     var close = $('#forgotClose');
+    var resetLink = $('#forgotResetLink');
     if (title) title.textContent = 'Quên mật khẩu';
-    if (sub) sub.textContent = 'Mật khẩu sẽ được gửi đến đúng email của tài khoản.';
+    if (sub) sub.textContent = 'Liên kết đặt lại mật khẩu sẽ được gửi đến đúng email của tài khoản.';
     if (fields) fields.hidden = false;
     if (done) done.hidden = true;
+    if (resetLink) {
+      resetLink.hidden = true;
+      resetLink.setAttribute('href', 'reset-password.html');
+    }
     if (email) {
       email.value = '';
       email.setAttribute('aria-invalid', 'false');
@@ -2235,7 +2243,7 @@ import * as api from './api.js?v=20261126a';
     if (submit) {
       submit.hidden = false;
       submit.disabled = false;
-      submit.innerHTML = 'Gửi mật khẩu';
+      submit.innerHTML = 'Gửi liên kết';
       submit.removeAttribute('aria-busy');
       submit.classList.remove('is-loading');
     }
@@ -2275,7 +2283,7 @@ import * as api from './api.js?v=20261126a';
     }
   }
 
-  function syncForgotSent(member) {
+  function syncForgotSent(member, resetUrl) {
     var fields = $('#forgotFields');
     var done = $('#forgotDone');
     var title = $('#forgotTitle');
@@ -2285,17 +2293,22 @@ import * as api from './api.js?v=20261126a';
     var err = $('#forgotEmailErr');
     var submit = $('#forgotSubmit');
     var close = $('#forgotClose');
+    var resetLink = $('#forgotResetLink');
     if (fields) fields.hidden = true;
     if (done) done.hidden = false;
     if (title) title.textContent = 'Kiểm tra email';
-    if (sub) sub.textContent = 'Mật khẩu đã được gửi đến đúng tài khoản.';
-    if (text) text.innerHTML = 'Mật khẩu của tài khoản <b>' + esc(member.name) + '</b> đã được gửi đến <b>' + esc(member.email) + '</b>.';
+    if (sub) sub.textContent = 'Liên kết đặt lại mật khẩu đã được gửi đến đúng tài khoản.';
+    if (text) text.innerHTML = 'Liên kết đặt lại mật khẩu của tài khoản <b>' + esc(member.name) + '</b> đã được gửi đến <b>' + esc(member.email) + '</b>.';
     if (email) email.setAttribute('aria-invalid', 'false');
     if (err) {
       err.hidden = true;
       err.textContent = '';
     }
     if (submit) submit.hidden = true;
+    if (resetLink) {
+      resetLink.hidden = !resetUrl;
+      if (resetUrl) resetLink.setAttribute('href', resetUrl);
+    }
     if (close) {
       close.textContent = 'Đóng';
       close.classList.remove('btn--secondary');
@@ -2331,7 +2344,7 @@ import * as api from './api.js?v=20261126a';
     runBusy(btn, 'Đang gửi…', async function () {
       try {
         var res = await api.forgotPassword(email);
-        syncForgotSent(res.member);
+        syncForgotSent(res.member, res.resetUrl);
       } catch (e) {
         showForgotError((e && e.message) || 'Không gửi được email.');
       }
@@ -2372,7 +2385,11 @@ import * as api from './api.js?v=20261126a';
     state.incomeMember = null;
     state.editingLoan = null;
     state.payingLoan = null;
+    state.interestLoan = null;
+    state.interestEntry = null;
+    state.interestMode = 'pay';
     state.loanType = 'lend';
+    state.loanTerm = 'open';
     state.loanFilter = 'all';
     state.balanceVisible = false;
     if (state.balanceTimer) {
@@ -2497,13 +2514,38 @@ import * as api from './api.js?v=20261126a';
       .sort(function (a, b) { return atTime(b.date) - atTime(a.date); });
   }
 
+  function loanInterestEntries(loan) {
+    var list = Array.isArray(loan.interests) ? loan.interests.slice() : [];
+    if (loan.interest) {
+      list.push({
+        id: loan.interest.id || 'legacy-' + loan.id,
+        amount: Number(loan.interest.amount) || 0,
+        date: loan.interest.date || '',
+        note: loan.interest.note || '',
+        mode: 'pay',
+        cashId: loan.interest.cashId || ''
+      });
+    }
+    return list.sort(function (a, b) { return atTime(b.date) - atTime(a.date); });
+  }
+
+  function sumLoanInterest(entries, mode) {
+    return entries
+      .filter(function (entry) { return (entry.mode || 'pay') === mode; })
+      .reduce(function (sum, entry) { return sum + (Number(entry.amount) || 0); }, 0);
+  }
+
   function loanStats(loan) {
     var payments = loanPaymentsFor(loan.id);
     var paid = payments.reduce(function (s, p) { return s + p.amount; }, 0);
-    var remaining = Math.max(0, loan.amount - paid);
+    var interests = loanInterestEntries(loan);
+    var interestPaid = sumLoanInterest(interests, 'pay');
+    var interestCapitalized = sumLoanInterest(interests, 'capitalize');
+    var principal = (Number(loan.amount) || 0) + interestCapitalized;
+    var remaining = Math.max(0, principal - paid);
     var closed = remaining <= 0;
     var dueState = '';
-    var dueText = closed ? 'Đã tất toán' : (loan.dueDate ? 'Hạn ' + fmtDate(loan.dueDate) : 'Không đặt hạn');
+    var dueText = closed ? 'Đã tất toán' : (loan.dueDate ? 'Hạn ' + fmtDate(loan.dueDate) : 'Không kỳ hạn');
 
     if (!closed && loan.dueDate) {
       var due = toDate(loan.dueDate);
@@ -2517,7 +2559,12 @@ import * as api from './api.js?v=20261126a';
         else if (diff <= 7) { dueState = 'soon'; dueText = 'Còn ' + diff + ' ngày'; }
       }
     }
-    return { payments: payments, paid: paid, remaining: remaining, closed: closed, dueState: dueState, dueText: dueText };
+    return {
+      payments: payments, paid: paid, principal: principal, remaining: remaining, closed: closed,
+      interests: interests, interestPaid: interestPaid, interestCapitalized: interestCapitalized,
+      interestTotal: interestPaid + interestCapitalized,
+      dueState: dueState, dueText: dueText
+    };
   }
 
   function loanTotals() {
@@ -2620,7 +2667,7 @@ import * as api from './api.js?v=20261126a';
   function loanCard(loan) {
     var s = loanStats(loan);
     var isBorrow = loan.type === 'borrow';
-    var pct = loan.amount ? Math.round(Math.min(1, s.paid / loan.amount) * 100) : 0;
+    var pct = s.principal ? Math.round(Math.min(1, s.paid / s.principal) * 100) : 0;
     var dueCls = s.dueState === 'overdue' ? ' is-overdue' : (s.dueState === 'soon' ? ' is-soon' : '');
     return '<article class="loan-card' + (s.closed ? ' is-closed' : '') + '" data-open-loan="' + loan.id + '">' +
       '<div class="loan-card-head"><div class="loan-card-title">' +
@@ -2630,8 +2677,16 @@ import * as api from './api.js?v=20261126a';
       '<div class="loan-card-meta"><span>' + (isBorrow ? 'Còn phải trả' : 'Còn phải thu') + '</span>' +
       '<span>Vay ' + fmtDate(loan.date) + '</span></div>' +
       '<div class="loan-bar"><span style="width:' + pct + '%"></span></div>' +
-      '<div class="loan-card-foot"><span>Đã ' + (isBorrow ? 'trả' : 'thu') + ' ' + money(s.paid) + ' / ' + money(loan.amount) + '</span>' +
+      '<div class="loan-card-foot"><span>Đã ' + (isBorrow ? 'trả' : 'thu') + ' ' + money(s.paid) + ' / ' + money(s.principal) + '</span>' +
       '<span class="loan-due' + dueCls + '">' + esc(s.dueText) + '</span></div>' +
+      (s.interestPaid
+        ? '<div class="loan-interest-mini"><span>Lãi đã ' + (isBorrow ? 'trả' : 'nhận') + '</span>' +
+          '<b class="' + (isBorrow ? 'is-expense' : 'is-income') + '">' + money(s.interestPaid) + '</b></div>'
+        : '') +
+      (s.interestCapitalized
+        ? '<div class="loan-interest-mini"><span>Lãi cộng vào gốc</span>' +
+          '<b class="' + (isBorrow ? 'is-expense' : 'is-income') + '">' + money(s.interestCapitalized) + '</b></div>'
+        : '') +
       '</article>';
   }
 
@@ -2731,10 +2786,37 @@ import * as api from './api.js?v=20261126a';
         '<button class="btn-icon btn-icon--danger" type="button" data-act="delete-loan-payment" data-id="' + p.id + '" aria-label="Xoá lần trả">' + icon('trash', 18) + '</button></div>';
     }).join('') || '<p class="section-empty">Chưa có lần ' + (isBorrow ? 'trả' : 'thu') + ' nào.</p>';
 
+    var interestRows = s.interests.length ? s.interests.map(function (entry) {
+      var isCapitalize = (entry.mode || 'pay') === 'capitalize';
+      var modeLabel = isCapitalize
+        ? 'Cộng vào gốc'
+        : (isBorrow ? 'Lãi đã trả' : 'Lãi đã nhận');
+      return '<div class="payment-row interest-row"><div class="payment-main">' +
+        '<span class="payment-amount">' + money(entry.amount) + '</span>' +
+        '<span class="payment-date">' + modeLabel + ' · ' + fmtDate(entry.date) +
+        (entry.note ? ' · ' + esc(entry.note) : '') + '</span></div>' +
+        '<div class="interest-actions">' +
+        '<button class="btn-icon" type="button" data-act="edit-loan-interest" data-id="' + loan.id + '" data-interest-id="' + entry.id + '" aria-label="Sửa lần lãi ' + fmtDate(entry.date) + '">' + icon('pencil', 18) + '</button>' +
+        '<button class="btn-icon btn-icon--danger" type="button" data-act="delete-loan-interest" data-id="' + loan.id + '" data-interest-id="' + entry.id + '" aria-label="Xoá lần lãi ' + fmtDate(entry.date) + '">' + icon('trash', 18) + '</button>' +
+        '</div></div>';
+    }).join('') : '<p class="section-empty">Chưa ghi lãi. Có thể ghi nhiều kỳ: trả lãi hoặc cộng vào gốc.</p>';
+
+    var interestHtml = '<div class="loan-interest">' +
+      '<div class="loan-interest-head"><span class="loan-interest-label">Lãi khoản vay</span>' +
+      '<button class="btn btn--secondary btn--sm" type="button" data-act="add-loan-interest" data-id="' + loan.id + '">' +
+      icon('plus', 16) + 'Ghi lãi</button></div>' +
+      (s.interestTotal
+        ? '<p class="loan-interest-meta">Đã ' + (isBorrow ? 'trả' : 'nhận') + ' lãi ' + money(s.interestPaid) +
+          ' · Lãi cộng gốc ' + money(s.interestCapitalized) + '</p>'
+        : '') +
+      '<div class="payment-list">' + interestRows + '</div></div>';
+
     body.innerHTML =
       '<div class="loan-hero"><span class="loan-hero-label">' + (isBorrow ? 'Còn phải trả' : 'Còn phải thu') + '</span>' +
       '<span class="loan-hero-amount">' + money(s.remaining) + '</span>' +
-      '<p class="loan-hero-sub">Gốc ' + money(loan.amount) + ' · đã ' + (isBorrow ? 'trả ' : 'thu ') + money(s.paid) + '</p></div>' +
+      '<p class="loan-hero-sub">Gốc ' + money(loan.amount) +
+      (s.interestCapitalized ? ' · lãi gộp ' + money(s.interestCapitalized) : '') +
+      ' · đã ' + (isBorrow ? 'trả gốc ' : 'thu gốc ') + money(s.paid) + '</p></div>' +
       '<dl class="detail-facts">' +
       '<div class="fact"><dt>Ngày vay</dt><dd>' + fmtDate(loan.date) + '</dd></div>' +
       '<div class="fact"><dt>Hạn trả</dt><dd>' +
@@ -2745,6 +2827,7 @@ import * as api from './api.js?v=20261126a';
       (loan.note ? '<div class="fact"><dt>Ghi chú</dt><dd>' + esc(loan.note) + '</dd></div>' : '') +
       '<div class="fact"><dt>Người tạo</dt><dd>' + esc(nameOf(loan.createdBy)) + '</dd></div>' +
       '</dl>' +
+      interestHtml +
       '<div><p class="block-label">Lịch sử ' + (isBorrow ? 'trả nợ' : 'thu nợ') + '</p>' +
       '<div class="payment-list">' + payments + '</div></div>';
 
@@ -2774,17 +2857,50 @@ import * as api from './api.js?v=20261126a';
     }).join('');
   }
 
+  function renderLoanTermSeg() {
+    var wrap = $('#loanTermSeg');
+    if (!wrap) return;
+    wrap.innerHTML = [
+      { id: 'open', label: 'Không kỳ hạn', sub: 'Trả khi thu xếp được' },
+      { id: 'fixed', label: 'Có ngày hẹn', sub: 'Có hạn trả cụ thể' }
+    ].map(function (t) {
+      return '<button class="seg-btn loan-type-btn" type="button" data-act="pick-loan-term" data-term="' + t.id + '" aria-pressed="' +
+        (state.loanTerm === t.id ? 'true' : 'false') + '">' +
+        '<span class="loan-type-label">' + t.label + '</span><span class="loan-type-sub">' + t.sub + '</span></button>';
+    }).join('');
+  }
+
+  function syncLoanTerm() {
+    var open = state.loanTerm === 'open';
+    var dates = $('#loanDates');
+    var wrap = $('#loanDueWrap');
+    var due = $('#loanDue');
+    if (dates) dates.classList.toggle('is-single', open);
+    if (wrap) wrap.hidden = open;
+    if (due) {
+      due.disabled = open;
+      if (open) due.value = '';
+      due.setAttribute('aria-invalid', 'false');
+    }
+    var dueErr = $('#loanDueErr');
+    if (dueErr) {
+      dueErr.hidden = true;
+      dueErr.textContent = '';
+    }
+  }
+
   function openLoanForm(loan) {
     var form = $('#loanForm');
     if (!form) return;
     var editing = !!loan;
     state.editingLoan = editing ? loan.id : null;
     state.loanType = editing ? loan.type : 'lend';
+    state.loanTerm = editing ? (loan.dueDate ? 'fixed' : 'open') : 'open';
     var hasPayments = editing && loanPaymentsFor(loan.id).length > 0;
 
     $('#loanTitle').textContent = editing ? 'Sửa khoản vay' : 'Thêm khoản vay';
     $('#loanSheetSub').textContent = editing
-      ? 'Sửa người, hạn trả hoặc ghi chú.'
+      ? 'Sửa người, kỳ hạn hoặc ghi chú.'
       : 'Khoản vay sẽ tự ghi vào sổ thu/chi và tính vào số dư.';
     $('#loanSubmit').textContent = editing ? 'Lưu thay đổi' : 'Thêm khoản vay';
     $('#loanPerson').value = editing ? loan.person : '';
@@ -2802,6 +2918,8 @@ import * as api from './api.js?v=20261126a';
       ? icon('info', 16) + '<span>Đã có lần ' + (loan.type === 'borrow' ? 'trả' : 'thu') + ' nên không sửa được số tiền hoặc ngày vay. Xoá khoản vay rồi tạo lại nếu cần.</span>'
       : icon('info', 16) + '<span>' + (editing ? 'Số tiền/ngày chỉ sửa được khi chưa có lần trả nào.' : (state.loanType === 'borrow' ? 'Tiền vay sẽ cộng vào số dư.' : 'Tiền cho vay sẽ trừ khỏi số dư.')) + '</span>';
     renderLoanTypeSeg();
+    renderLoanTermSeg();
+    syncLoanTerm();
     closeDialog($('#detailSheet'));
     closeDialog($('#loanDetailSheet'));
     openDialog($('#loanSheet'), '#loanPerson');
@@ -2815,6 +2933,12 @@ import * as api from './api.js?v=20261126a';
     var due = $('#loanDue').value;
     var note = $('#loanNote').value.trim();
     var ok = true;
+    var dueErr = $('#loanDueErr');
+    if (dueErr) {
+      dueErr.hidden = true;
+      dueErr.textContent = '';
+    }
+    $('#loanDue').setAttribute('aria-invalid', 'false');
 
     if (!person) {
       $('#loanPersonErr').textContent = 'Nhập tên người vay / cho vay.';
@@ -2834,7 +2958,17 @@ import * as api from './api.js?v=20261126a';
       $('#loanDate').focus();
       ok = false;
     }
+    if (state.loanTerm === 'fixed' && !due) {
+      if (dueErr) {
+        dueErr.textContent = 'Chọn hạn trả hoặc chuyển sang không kỳ hạn.';
+        dueErr.hidden = false;
+      }
+      $('#loanDue').setAttribute('aria-invalid', 'true');
+      $('#loanDue').focus();
+      ok = false;
+    }
     if (!ok) return;
+    if (state.loanTerm === 'open') due = '';
 
     var values = { person: person, dueDate: due, note: note };
     if (!loan || !$('#loanAmount').disabled) values.amount = amount;
@@ -2940,6 +3074,162 @@ import * as api from './api.js?v=20261126a';
     });
   }
 
+  function renderLoanInterestModeSeg() {
+    var wrap = $('#loanInterestModeSeg');
+    if (!wrap) return;
+    var loan = state.interestLoan ? findLoan(state.interestLoan) : null;
+    var isBorrow = loan && loan.type === 'borrow';
+    wrap.innerHTML = [
+      { id: 'pay', label: isBorrow ? 'Trả lãi' : 'Thu lãi', sub: 'Ghi vào sổ thu/chi' },
+      { id: 'capitalize', label: 'Cộng vào gốc', sub: 'Tăng số còn phải ' + (isBorrow ? 'trả' : 'thu') }
+    ].map(function (m) {
+      return '<button class="seg-btn loan-type-btn" type="button" data-act="pick-interest-mode" data-mode="' + m.id + '" aria-pressed="' +
+        (state.interestMode === m.id ? 'true' : 'false') + '">' +
+        '<span class="loan-type-label">' + m.label + '</span><span class="loan-type-sub">' + m.sub + '</span></button>';
+    }).join('');
+  }
+
+  function syncLoanInterestNotice() {
+    var loan = state.interestLoan ? findLoan(state.interestLoan) : null;
+    if (!loan) return;
+    var isBorrow = loan.type === 'borrow';
+    var notice = $('#loanInterestNotice');
+    if (!notice) return;
+    var s = loanStats(loan);
+    var reopen = s.closed && state.interestMode === 'capitalize';
+    notice.innerHTML = icon('info', 16) + '<span>' +
+      (state.interestMode === 'capitalize'
+        ? 'Lãi sẽ cộng vào gốc, làm tăng số còn phải ' + (isBorrow ? 'trả' : 'thu') + ' và không tạo giao dịch tiền mặt.'
+        : 'Lãi ' + (isBorrow ? 'trả' : 'thu') + ' theo kỳ được ghi vào sổ thu/chi và không giảm gốc vay.') +
+      (reopen ? ' Khoản đã tất toán; lãi cộng gốc sẽ mở lại khoản vay.' : '') +
+      '</span>';
+    var label = $('#loanInterestDateLabel');
+    if (label) {
+      label.textContent = state.interestMode === 'capitalize'
+        ? 'Ngày ghi nhận lãi'
+        : (isBorrow ? 'Ngày trả lãi' : 'Ngày nhận lãi');
+    }
+  }
+
+  function openLoanInterestForm(id, interestId) {
+    var loan = findLoan(id);
+    if (!loan) return;
+    var entries = loanInterestEntries(loan);
+    var entry = interestId ? entries.filter(function (item) { return item.id === interestId; })[0] : null;
+    if (interestId && !entry) return;
+    state.interestLoan = loan.id;
+    state.interestEntry = entry ? entry.id : null;
+    state.interestMode = entry ? (entry.mode || 'pay') : 'pay';
+    var isBorrow = loan.type === 'borrow';
+    var editing = !!entry;
+
+    $('#loanInterestTitle').textContent = (editing ? 'Sửa lãi ' : 'Ghi lãi ') + (isBorrow ? 'đi vay' : 'cho vay');
+    $('#loanInterestSub').textContent = editing
+      ? 'Cập nhật lần lãi cho ' + loan.person + '.'
+      : 'Ghi một kỳ lãi cho ' + loan.person + '. Có thể ghi nhiều lần.';
+    $('#loanInterestAmount').value = editing ? Number(entry.amount).toLocaleString('de-DE') : '';
+    $('#loanInterestDate').value = editing
+      ? (entry.date || dateInputValue(new Date().toISOString()))
+      : dateInputValue(new Date().toISOString());
+    $('#loanInterestNote').value = editing ? (entry.note || '') : '';
+    $('#loanInterestAmountErr').hidden = true;
+    $('#loanInterestAmountErr').textContent = '';
+    $('#loanInterestDateErr').hidden = true;
+    $('#loanInterestDateErr').textContent = '';
+    $('#loanInterestAmount').setAttribute('aria-invalid', 'false');
+    $('#loanInterestDate').setAttribute('aria-invalid', 'false');
+    $('#loanInterestSubmit').textContent = editing ? 'Lưu thay đổi' : 'Lưu lãi';
+
+    renderLoanInterestModeSeg();
+    syncLoanInterestNotice();
+    closeDialog($('#loanDetailSheet'));
+    openDialog($('#loanInterestSheet'), '#loanInterestAmount');
+  }
+
+  function saveLoanInterest() {
+    var loan = state.interestLoan ? findLoan(state.interestLoan) : null;
+    if (!loan) return;
+    var amount = Number(($('#loanInterestAmount').value || '').replace(/[^\d]/g, ''));
+    var date = $('#loanInterestDate').value;
+    var note = $('#loanInterestNote').value.trim();
+
+    $('#loanInterestAmountErr').hidden = true;
+    $('#loanInterestAmountErr').textContent = '';
+    $('#loanInterestDateErr').hidden = true;
+    $('#loanInterestDateErr').textContent = '';
+    $('#loanInterestAmount').setAttribute('aria-invalid', 'false');
+    $('#loanInterestDate').setAttribute('aria-invalid', 'false');
+
+    if (!amount) {
+      $('#loanInterestAmountErr').textContent = 'Nhập số lãi lớn hơn 0.';
+      $('#loanInterestAmountErr').hidden = false;
+      $('#loanInterestAmount').setAttribute('aria-invalid', 'true');
+      $('#loanInterestAmount').focus();
+      return;
+    }
+    if (!date) {
+      $('#loanInterestDateErr').textContent = 'Chọn ngày ghi nhận lãi.';
+      $('#loanInterestDateErr').hidden = false;
+      $('#loanInterestDate').setAttribute('aria-invalid', 'true');
+      $('#loanInterestDate').focus();
+      return;
+    }
+
+    var editId = state.interestEntry;
+    var mode = state.interestMode;
+    runBusy($('#loanInterestSubmit'), 'Đang lưu…', async function () {
+      try {
+        await api.saveLoanInterest({
+          loanId: loan.id,
+          id: editId || undefined,
+          amount: amount,
+          date: date,
+          note: note,
+          mode: mode
+        });
+        state.interestLoan = null;
+        state.interestEntry = null;
+        closeDialog($('#loanInterestSheet'));
+        await refreshData(true);
+        openLoanDetail(loan.id);
+        toast(editId
+          ? 'Đã cập nhật lần lãi'
+          : (mode === 'capitalize' ? 'Đã cộng lãi vào gốc' : 'Đã ghi lãi ' + (loan.type === 'borrow' ? 'đi vay' : 'cho vay')));
+      } catch (err) {
+        fail(err);
+      }
+    });
+  }
+
+  function askDeleteLoanInterest(id, interestId) {
+    var loan = findLoan(id);
+    if (!loan) return;
+    var entry = loanInterestEntries(loan).filter(function (item) { return item.id === interestId; })[0];
+    if (!entry) return;
+    var isCapitalize = (entry.mode || 'pay') === 'capitalize';
+    openConfirm({
+      title: 'Xoá lần lãi?',
+      message: isCapitalize
+        ? 'Lãi ' + money(entry.amount) + ' đang cộng vào gốc sẽ bị xoá; số còn lại sẽ tính lại.'
+        : 'Lãi ' + (loan.type === 'borrow' ? 'đã trả ' : 'đã nhận ') + money(entry.amount) +
+          ' sẽ bị xoá khỏi khoản vay và khỏi sổ thu/chi.',
+      confirmLabel: 'Xoá lãi',
+      busyLabel: 'Đang xoá…',
+      onConfirm: async function () {
+        try {
+          await api.deleteLoanInterest(loan.id, entry.id);
+          closeDialog($('#confirmSheet'));
+          closeDialog($('#loanDetailSheet'));
+          await refreshData(true);
+          openLoanDetail(loan.id);
+          toast('Đã xoá lần lãi');
+        } catch (err) {
+          fail(err);
+        }
+      }
+    });
+  }
+
   function askDeleteLoan(id) {
     var loan = findLoan(id);
     if (!loan) return;
@@ -2947,13 +3237,16 @@ import * as api from './api.js?v=20261126a';
     openConfirm({
       title: 'Xoá khoản vay?',
       message: '<b>' + esc(loan.person) + '</b> · ' + money(loan.amount) + '. Sẽ xoá luôn ' +
-        (s.payments.length ? s.payments.length + ' lần ' + (loan.type === 'borrow' ? 'trả' : 'thu') + ' và ' : '') +
-        'khoản tiền đã ghi trong sổ. Số dư sẽ tính lại.',
+        (s.payments.length ? s.payments.length + ' lần ' + (loan.type === 'borrow' ? 'trả' : 'thu') + ', ' : '') +
+        (s.interests.length ? s.interests.length + ' lần lãi và ' : '') +
+        'các khoản tiền đã ghi trong sổ. Số dư sẽ tính lại.',
       confirmLabel: 'Xoá khoản vay',
       busyLabel: 'Đang xoá…',
       onConfirm: async function () {
         try {
-          var cashIds = [loan.cashId].concat(s.payments.map(function (p) { return p.cashId; }))
+          var cashIds = [loan.cashId]
+            .concat(s.payments.map(function (p) { return p.cashId; }))
+            .concat(s.interests.map(function (entry) { return entry.cashId; }))
             .filter(function (id) { return !!id; });
           await api.deleteLoan(loan.id);
           state.data.loans = state.data.loans.filter(function (l) { return l.id !== loan.id; });
@@ -3031,7 +3324,7 @@ import * as api from './api.js?v=20261126a';
     var debt = expenses.filter(isDebtExpense);
     var incomeBy = {};
     var spendBy = {};
-    var flows = { collect: 0, borrow: 0, refund: 0, lend: 0, repay: 0 };
+    var flows = { collect: 0, borrow: 0, refund: 0, lend: 0, repay: 0, interestIn: 0, interestOut: 0 };
 
     realIncome.forEach(function (i) {
       var id = i.category || 'other_income';
@@ -3042,10 +3335,12 @@ import * as api from './api.js?v=20261126a';
       spendBy[id] = (spendBy[id] || 0) + e.amount;
     });
     incomes.forEach(function (i) {
-      if (flows[i.category] !== undefined) flows[i.category] += i.amount;
+      if (i.category === 'loan_interest') flows.interestIn += i.amount;
+      else if (flows[i.category] !== undefined) flows[i.category] += i.amount;
     });
     expenses.forEach(function (e) {
-      if (flows[e.category] !== undefined) flows[e.category] += e.amount;
+      if (e.category === 'loan_interest') flows.interestOut += e.amount;
+      else if (flows[e.category] !== undefined) flows[e.category] += e.amount;
     });
 
     return {
@@ -3285,16 +3580,18 @@ import * as api from './api.js?v=20261126a';
       { label: 'Đi vay', value: t.flows.borrow, kind: 'in' },
       { label: 'Hoàn tiền', value: t.flows.refund, kind: 'in' },
       { label: 'Cho vay', value: t.flows.lend, kind: 'out' },
-      { label: 'Trả nợ', value: t.flows.repay, kind: 'out' }
+      { label: 'Trả nợ', value: t.flows.repay, kind: 'out' },
+      { label: 'Lãi cho vay', value: t.flows.interestIn, kind: 'in' },
+      { label: 'Lãi đi vay', value: t.flows.interestOut, kind: 'out' }
     ].filter(function (r) { return r.value > 0; });
     html += '<div class="card card-pad report-card"><div class="report-card-head"><h3 class="report-card-title">Dòng tiền vay &amp; khác</h3>' +
-      '<span class="report-card-total">' + money(t.otherIn + t.debt) + '</span></div>' +
+      '<span class="report-card-total">' + money(t.otherIn + t.debt + t.flows.interestIn) + '</span></div>' +
       (flowRows.length
         ? '<div class="flow-list">' + flowRows.map(function (r) {
             return '<div class="flow-row"><span>' + esc(r.label) + '</span><b class="' +
               (r.kind === 'in' ? 'is-income' : 'is-expense') + '">' + (r.kind === 'in' ? '+' : '−') + money(r.value) + '</b></div>';
           }).join('') + '</div>'
-        : '<p class="section-empty">Không có phát sinh vay, trả nợ hoặc hoàn tiền.</p>') +
+        : '<p class="section-empty">Không có phát sinh vay, trả nợ, lãi hoặc hoàn tiền.</p>') +
       '</div>';
 
     html += budgetSection(key);
@@ -3397,18 +3694,27 @@ import * as api from './api.js?v=20261126a';
   }
 
   function exportLoans() {
-    var header = ['Loại bản ghi', 'Chiều', 'Người', 'Số tiền', 'Ngày', 'Hạn trả', 'Ghi chú', 'Đã trả/thu', 'Còn lại', 'Trạng thái'];
+    var header = ['Loại bản ghi', 'Chiều', 'Người', 'Số tiền', 'Ngày', 'Hạn trả', 'Ghi chú',
+      'Đã trả/thu', 'Còn lại', 'Lãi đã trả/nhận', 'Lãi cộng gốc', 'Tổng gốc + lãi gộp', 'Trạng thái'];
     var rows = [];
     state.data.loans.forEach(function (loan) {
       var s = loanStats(loan);
       rows.push([
         'Khoản vay', loan.type === 'borrow' ? 'Đi vay' : 'Cho vay', loan.person, loan.amount,
-        loan.date, loan.dueDate, loan.note || '', s.paid, s.remaining, s.closed ? 'Đã tất toán' : 'Đang mở'
+        loan.date, loan.dueDate || 'Không kỳ hạn', loan.note || '', s.paid, s.remaining,
+        s.interestPaid, s.interestCapitalized, s.principal,
+        s.closed ? 'Đã tất toán' : 'Đang mở'
       ]);
       s.payments.slice().reverse().forEach(function (p) {
         rows.push([
           'Thanh toán', loan.type === 'borrow' ? 'Trả nợ' : 'Thu nợ', loan.person, p.amount,
-          p.date, '', p.note || '', '', '', ''
+          p.date, '', p.note || '', '', '', '', '', '', ''
+        ]);
+      });
+      s.interests.slice().reverse().forEach(function (entry) {
+        rows.push([
+          'Lần lãi', (entry.mode || 'pay') === 'capitalize' ? 'Cộng vào gốc' : (loan.type === 'borrow' ? 'Trả lãi' : 'Thu lãi'),
+          loan.person, entry.amount, entry.date, '', entry.note || '', '', '', '', '', '', ''
         ]);
       });
     });
@@ -3499,9 +3805,24 @@ import * as api from './api.js?v=20261126a';
     if (loanForm) {
       loanForm.addEventListener('submit', function (ev) { ev.preventDefault(); saveLoan(); });
     }
+    var loanDue = $('#loanDue');
+    if (loanDue) {
+      loanDue.addEventListener('input', function () {
+        this.setAttribute('aria-invalid', 'false');
+        var err = $('#loanDueErr');
+        if (err) {
+          err.textContent = '';
+          err.hidden = true;
+        }
+      });
+    }
     var loanPaymentForm = $('#loanPaymentForm');
     if (loanPaymentForm) {
       loanPaymentForm.addEventListener('submit', function (ev) { ev.preventDefault(); saveLoanPayment(); });
+    }
+    var loanInterestForm = $('#loanInterestForm');
+    if (loanInterestForm) {
+      loanInterestForm.addEventListener('submit', function (ev) { ev.preventDefault(); saveLoanInterest(); });
     }
     var budgetForm = $('#budgetForm');
     if (budgetForm) {
@@ -3538,17 +3859,26 @@ import * as api from './api.js?v=20261126a';
         $('#expAmountErr').hidden = true;
       });
     }
-    ['#loanAmount', '#loanPayAmount'].forEach(function (sel) {
+    ['#loanAmount', '#loanPayAmount', '#loanInterestAmount'].forEach(function (sel) {
       var el = $(sel);
       if (!el) return;
       el.addEventListener('input', function () {
         var digits = this.value.replace(/[^\d]/g, '');
         this.value = digits ? Number(digits).toLocaleString('de-DE') : '';
         this.setAttribute('aria-invalid', 'false');
-        var err = sel === '#loanAmount' ? $('#loanAmountErr') : $('#loanPayAmountErr');
+        var err = sel === '#loanAmount' ? $('#loanAmountErr')
+          : (sel === '#loanPayAmount' ? $('#loanPayAmountErr') : $('#loanInterestAmountErr'));
         if (err) err.hidden = true;
       });
     });
+    var loanInterestDate = $('#loanInterestDate');
+    if (loanInterestDate) {
+      loanInterestDate.addEventListener('input', function () {
+        this.setAttribute('aria-invalid', 'false');
+        var err = $('#loanInterestDateErr');
+        if (err) err.hidden = true;
+      });
+    }
     var loanPerson = $('#loanPerson');
     if (loanPerson) {
       loanPerson.addEventListener('input', function () {
@@ -3613,6 +3943,7 @@ import * as api from './api.js?v=20261126a';
 
       var act = trigger.getAttribute('data-act');
       var id = trigger.getAttribute('data-id');
+      var interestId = trigger.getAttribute('data-interest-id');
 
       switch (act) {
         case 'nav': go(trigger.getAttribute('data-view')); break;
@@ -3656,6 +3987,9 @@ import * as api from './api.js?v=20261126a';
           break;
         case 'open-loan': openLoanDetail(id); break;
         case 'add-loan-payment': openLoanPaymentForm(id); break;
+        case 'add-loan-interest': openLoanInterestForm(id); break;
+        case 'edit-loan-interest': openLoanInterestForm(id, interestId); break;
+        case 'delete-loan-interest': askDeleteLoanInterest(id, interestId); break;
         case 'delete-loan': askDeleteLoan(id); break;
         case 'delete-loan-payment': askDeleteLoanPayment(id); break;
         case 'loan-filter':
@@ -3673,6 +4007,16 @@ import * as api from './api.js?v=20261126a';
                 '</span>';
             }
           }
+          break;
+        case 'pick-loan-term':
+          state.loanTerm = trigger.getAttribute('data-term') === 'fixed' ? 'fixed' : 'open';
+          renderLoanTermSeg();
+          syncLoanTerm();
+          break;
+        case 'pick-interest-mode':
+          state.interestMode = trigger.getAttribute('data-mode') === 'capitalize' ? 'capitalize' : 'pay';
+          renderLoanInterestModeSeg();
+          syncLoanInterestNotice();
           break;
         case 'open-account': openAccount(); break;
         case 'pick-member':

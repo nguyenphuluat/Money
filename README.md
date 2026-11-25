@@ -9,10 +9,12 @@ Web app quản lý thu chi cho 2 người (vợ/chồng). Giao diện lấy từ
 - **Chi gấp**: cả hai có thể chi ngay khi yêu cầu đang chờ duyệt. Tiền trừ ngay, gắn nhãn `Chi gấp`; người còn lại xác nhận hoặc phản đối sau. Không giới hạn số tiền, không gửi email.
 - **Huỷ sau khi đã duyệt**: cả hai đều huỷ được, bắt buộc ghi lý do.
 - **Từ chối** có ô lý do (không bắt buộc).
-- **Sổ vay chi tiết**: cho vay / đi vay, từng người, hạn trả, thu/trả một phần, quá hạn. Khoản tiền tự ghi vào sổ thu/chi.
+- **Sổ vay chi tiết**: cho vay / đi vay, từng người, **không kỳ hạn hoặc có ngày hẹn**, thu/trả một phần, quá hạn. Khoản tiền tự ghi vào sổ thu/chi.
+- **Lãi khoản vay**: ghi nhiều kỳ lãi; chọn **trả/thu lãi** (tạo giao dịch tiền mặt) hoặc **cộng vào gốc** (tăng số còn phải trả/thu). Sửa/xoá từng lần lãi.
+- **Quên mật khẩu**: gửi **liên kết đặt lại một lần** qua email, hết hạn sau 15 phút; không gửi mật khẩu hiện tại.
 - **Phân loại thu/chi** và **lọc theo nhóm** cho cả hai tab.
 - **Tìm kiếm** theo tên món, lý do, ghi chú, người gửi; không phân biệt dấu.
-- **Báo cáo tháng**: thu nhập thực, chi tiêu, chênh lệch, số dư cuối tháng, so tháng trước, xu hướng 6 tháng, theo người, dòng tiền vay.
+- **Báo cáo tháng**: thu nhập thực, chi tiêu, chênh lệch, số dư cuối tháng, so tháng trước, xu hướng 6 tháng, theo người, dòng tiền vay và lãi cho vay/đi vay.
 - **Ngân sách theo nhóm**: hạn mức tháng, thanh % và cảnh báo gần/vượt.
 - **Ẩn số dư**: mặc định chỉ hiện `••••••`; bấm icon mắt để xem trong 20 giây rồi tự ẩn. Các khoản chờ duyệt/đã duyệt vẫn hiện bình thường.
 - **Xuất CSV** thủ công (thu nhập, chi tiêu, vay nợ), không cần Google Drive.
@@ -30,6 +32,7 @@ Google Apps Script Web App  ──  Google Sheet
     - trả JSON                     expenses
                                    loans
                                    loanPayments
+                                   loanInterests
                                    budgets
 ```
 
@@ -41,11 +44,17 @@ Google Apps Script Web App  ──  Google Sheet
 
 ```
 index.html                 khung ứng dụng + các sheet/dialog
+reset-password.html        trang đặt lại mật khẩu từ liên kết email
 manifest.json              khai báo PWA
 sw.js                      service worker (cache giao diện)
-assets/app.js              logic giao diện
-assets/app.css             giao diện
-assets/api.js              ⚠️ nơi dán URL Apps Script
+build.ps1                  đóng gói asset minified
+assets/app.js              logic giao diện (source)
+assets/app.css             giao diện (source)
+assets/app.min.js          bản đóng gói production (app + api)
+assets/app.min.css         bản CSS production
+assets/api.js              ⚠️ nơi dán URL Apps Script (source)
+assets/reset-password.js   logic trang đặt lại (source)
+assets/reset-password.min.js
 assets/favicon.svg         icon trình duyệt
 assets/icon-192.png        icon PWA
 assets/icon-512.png        icon PWA
@@ -54,12 +63,42 @@ apps-script/Code.gs        backend, dán vào Apps Script
 .nojekyll                  để GitHub Pages không xử lý qua Jekyll
 ```
 
+## Đóng gói &amp; dung lượng
+
+App production dùng file minified, không tải source:
+
+- `assets/app.min.js` — gộp `app.js` + `api.js`, minify.
+- `assets/app.min.css` — CSS production đã lược style board/spec của OpenDesign.
+- `assets/reset-password.min.js` — chỉ tải khi mở trang đặt lại.
+
+Sau khi sửa `assets/app.js`, `assets/app.css`, `assets/api.js` hoặc `assets/reset-password.js`, chạy:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build.ps1
+```
+
+Rồi tăng `?v=` trong `index.html` / `reset-password.html` và `CACHE`/`SHELL` trong `sw.js`.
+
+Dung lượng một lần mở đầu (không tính Google Fonts, icon cài PWA):
+
+| Phần | Raw | Gzip |
+|---|---:|---:|
+| `index.html` | ~33 KB | ~5,6 KB |
+| `app.min.css` | ~55 KB | ~9,8 KB |
+| `app.min.js` | ~124 KB | ~34 KB |
+| manifest + favicon | ~1,2 KB | ~0,6 KB |
+| **Tổng** | **~213 KB** | **~50 KB** |
+
+- `app.min.js` gzip ~34 KB, thấp hơn bản cũ ~37–39 KB.
+- GitHub Pages đang trả gzip; nếu trình duyệt nhận Brotli thì tổng khoảng ~42 KB.
+- SW chỉ cache shell tối thiểu (index, CSS/JS min, favicon, manifest), không cache icon PWA/reset page; lần mở sau lấy từ cache, gần như không tải lại asset từ GitHub.
+
 ## Cài đặt (khoảng 10 phút)
 
 ### 1. Tạo Google Sheet
 
 1. Vào <https://sheets.google.com> → tạo bảng tính mới, đặt tên "Sổ Chi Tiêu".
-2. Không cần tạo tab — script sẽ tự tạo `members`, `incomes`, `expenses`, `loans`, `loanPayments`, `budgets`.
+2. Không cần tạo tab — script sẽ tự tạo `members`, `incomes`, `expenses`, `loans`, `loanPayments`, `loanInterests`, `budgets`.
 
 ### 2. Dán backend
 
@@ -88,7 +127,9 @@ Mở `assets/api.js`, thay dòng đầu:
 var API_URL = 'PASTE_APPS_SCRIPT_EXEC_URL';
 ```
 
-bằng URL vừa copy. Xong.
+bằng URL vừa copy. Sau đó mở `reset-password.html`, sửa `data-reset-endpoint` ở thẻ `<body>` bằng đúng URL `/exec` đó (trang đặt lại mật khẩu dùng fetch riêng).
+
+Cuối cùng chạy `build.ps1` để đóng gói `app.min.js` với URL mới.
 
 ### 5. Chạy thử
 
@@ -106,7 +147,7 @@ Mở `http://localhost:4173`. Lần chạy đầu script tự tạo các tab và
 
 ### 6. Đổi mật khẩu
 
-Mở Google Sheet → tab `members`, sửa cột `password`. Đổi luôn `name` và `role` nếu muốn.
+Dùng **Quên mật khẩu** ở trang đăng nhập để nhận liên kết đặt lại; cách này không cần mở Sheet. Cột `password` trong tab `members` giờ lưu **hash**, không sửa tay.
 
 > **Không đổi cột `id`** (`luat`, `thuong`) sau khi đã có dữ liệu — mọi khoản thu/chi tham chiếu theo id này. Cột `login` thì đổi thoải mái.
 
@@ -122,10 +163,12 @@ Không cần cấu hình domain gì thêm — Apps Script không kiểm tra orig
 
 **members**
 
-| id | login | name | role | password | order |
+| id | login | name | role | password (hash) | order |
 |---|---|---|---|---|---|
-| luat | ongluatlangvang@gmail.com | Luật | Chồng | luat123 | 1 |
-| thuong | thuonglt1210@gmail.com | Thương | Vợ | thuong123 | 2 |
+| luat | ongluatlangvang@gmail.com | Luật | Chồng | `v1$...` | 1 |
+| thuong | thuonglt1210@gmail.com | Thương | Vợ | `v1$...` | 2 |
+
+Mật khẩu mặc định ban đầu là `luat123` / `thuong123`; sau lần chạy đầu script tự đổi cột `password` thành hash. Nên đặt lại mật khẩu ngay sau khi cài.
 
 **incomes**: `id, amount, date, member, note, createdBy, createdAt, category, loanId`
 
@@ -135,13 +178,16 @@ Không cần cấu hình domain gì thêm — Apps Script không kiểm tra orig
 
 **loanPayments**: `id, loanId, amount, date, note, createdBy, createdAt, cashId`
 
+**loanInterests**: `id, loanId, amount, date, note, mode, createdBy, createdAt, cashId`
+
 **budgets**: `category, amount, updatedAt, updatedBy`
 
 - `agreed` là JSON một ô: `{"luat":true,"thuong":null}`.
 - `status`: `pending | approved | purchased | rejected | cancelled`.
 - `urgent`: `1` và `urgentAck`: `ok | no | trống`.
-- `category` của thu nhập: `salary, bonus, business, interest, gift, other_income, refund` (và `collect`, `borrow` do sổ vay tự sinh).
-- `category` của chi: `home, utilities, food, transport, shopping, pets, health, education, gifts, entertainment, travel, other` (và `lend`, `repay` do sổ vay tự sinh).
+- `category` của thu nhập: `salary, bonus, business, interest, gift, other_income, refund` (và `collect`, `borrow`, `loan_interest` do sổ vay tự sinh).
+- `category` của chi: `home, utilities, food, transport, shopping, pets, health, education, gifts, entertainment, travel, other` (và `lend`, `repay`, `loan_interest` do sổ vay tự sinh).
+- `loanInterests.mode`: `pay` (trả/thu lãi bằng tiền mặt) hoặc `capitalize` (cộng vào gốc).
 - Số dư **không lưu**, app tính `tổng thu − tổng đã mua`, nên sửa/xoá là tự đúng lại.
 
 ### Nâng cấp từ bản cũ
@@ -150,6 +196,8 @@ Sau khi dán `Code.gs` mới, chạy một lần hàm **`setupSchema`** trong Ap
 
 - Thu nhập cũ chưa có nhóm sẽ hiện **Thu nhập khác**; sửa lại nếu muốn báo cáo đẹp.
 - Chi cũ chưa có nhóm sẽ hiện **Khác**.
+- Tab `loanInterests` được tạo tự động; dữ liệu vay cũ giữ nguyên, chưa có lãi.
+- Mật khẩu plaintext cũ tự đổi sang hash ở lần chạy đầu; token cũ hết hiệu lực nên cần đăng nhập lại một lần.
 
 ## Luồng nghiệp vụ
 
@@ -179,10 +227,22 @@ Sau khi dán `Code.gs` mới, chạy một lần hàm **`setupSchema`** trong Ap
 
 - **Cho vay**: tạo khoản vay → app tự ghi một khoản chi nhóm `Cho vay`, trừ số dư.
 - **Đi vay**: app tự ghi một khoản thu nhóm `Đi vay`, cộng số dư.
-- **Thu nợ / Trả nợ**: ghi từng lần, app tự sinh khoản thu/chi tương ứng.
+- **Thời hạn**: chọn **Không kỳ hạn** (không cần ngày hẹn) hoặc **Có ngày hẹn** (bắt buộc hạn trả). Đổi được khi sửa khoản vay.
+- **Thu nợ / Trả nợ**: ghi từng lần, app tự sinh khoản thu/chi tương ứng; số còn lại giảm theo gốc.
+- **Lãi khoản vay**: bấm **Ghi lãi** trong chi tiết khoản vay, chọn:
+  - **Trả lãi / Thu lãi**: tạo khoản chi/thu nhóm `loan_interest`, không giảm gốc.
+  - **Cộng vào gốc**: tăng số còn phải trả/thu, không tạo giao dịch tiền mặt; có thể mở lại khoản đã tất toán.
+  - Ghi được nhiều kỳ; sửa/xoá từng lần lãi. Lãi đi vay/cho vay hiện trong báo cáo tháng.
 - Khoản tự sinh có nhãn `Khoản vay`; sửa/xoá phải vào tab **Vay nợ**, không sửa trực tiếp trong danh sách chi/thu.
-- Số tiền/ngày vay chỉ sửa được khi chưa có lần trả nào; người/hạn/ghi chú sửa được.
-- Không tính lãi, không tự nhắc; chỉ hiện cảnh báo quá hạn/sắp đến hạn trong app.
+- Số tiền/ngày vay chỉ sửa được khi chưa có lần trả nào; người/kỳ hạn/ghi chú sửa được.
+- Không tự nhắc; chỉ hiện cảnh báo quá hạn/sắp đến hạn trong app.
+
+### Đặt lại mật khẩu
+
+- Bấm **Quên mật khẩu** ở trang đăng nhập, nhập đúng email tài khoản.
+- Hệ thống gửi **liên kết một lần** đến email đó; liên kết hết hạn sau **15 phút**.
+- Mở liên kết → nhập mật khẩu mới (ít nhất 8 ký tự) → đăng nhập lại. Mật khẩu cũ và các phiên cũ bị huỷ.
+- Email không chứa mật khẩu hiện tại. Nếu không yêu cầu, bỏ qua email; mật khẩu không đổi.
 
 ### Phân loại, lọc, tìm kiếm
 
@@ -213,9 +273,11 @@ Sau khi dán `Code.gs` mới, chạy một lần hàm **`setupSchema`** trong Ap
 
 ## Bảo mật — nói thẳng
 
-- Mật khẩu nằm **plaintext** trong tab `members`. Đừng bật "Anyone with the link" cho Sheet; chỉ chia sẻ với 2 người.
+- Mật khẩu lưu dạng **hash** `v1$salt$hmac` trong cột `password`; không lưu plaintext. Dữ liệu plaintext cũ được tự động migrate ở lần chạy đầu (token cũ sẽ hết hiệu lực một lần).
 - URL `/exec` nằm trong file JS công khai. Ai biết URL vẫn **không đọc/ghi được** nếu không có mật khẩu: mọi hành động đều kiểm tra token.
 - Token ký HMAC bằng secret sinh tự động trong Script Properties, hết hạn 30 ngày; đổi mật khẩu huỷ token cũ.
+- Không xoá `TOKEN_SECRET` trong Script Properties: secret này cũng là pepper của hash mật khẩu. Nếu mất, phải đặt lại mật khẩu qua liên kết Quên mật khẩu.
+- Liên kết đặt lại mật khẩu dùng token ngẫu nhiên, chỉ dùng một lần, hết hạn sau 15 phút; token cũ bị vô hiệu khi mật khẩu đổi. Email chỉ gửi liên kết, không gửi mật khẩu hiện tại.
 - Sai mật khẩu 6 lần bị khoá 10 phút.
 - Đây là mức bảo mật "đủ cho sổ gia đình", không phải ngân hàng. Đừng dùng mật khẩu bạn dùng ở chỗ khác.
 
@@ -224,12 +286,12 @@ Sau khi dán `Code.gs` mới, chạy một lần hàm **`setupSchema`** trong Ap
 | Điều | Thực tế |
 |---|---|
 | Realtime | Không. Tối đa 60 giây mới thấy thay đổi của người kia |
-| Tốc độ | Mỗi thao tác 0,5–4 giây; `list` đọc 6 tab |
+| Tốc độ | Mỗi thao tác 0,5–4 giây; `list` đọc 7 tab |
 | Ghi đồng thời | `LockService` khoá mọi thao tác ghi |
-| Sửa tay Sheet | Được, nhưng **không xoá dòng tiêu đề**, không đổi `id`, `status` phải đúng 5 giá trị |
+| Sửa tay Sheet | Được, nhưng **không xoá dòng tiêu đề**, không đổi `id`, `status` phải đúng 5 giá trị; cột `password` là hash, không sửa tay |
 | Quota Apps Script | 6 phút mỗi lần chạy, 30 lần đồng thời. App không dùng trigger định kỳ |
 | Giới hạn ô Sheet | 10 triệu ô — tab `expenses` 24 cột tương đương ~400.000 dòng |
-| Email | Chỉ dùng cho Quên mật khẩu; app không gửi email chi gấp |
+| Email | Chỉ dùng cho Quên mật khẩu (gửi liên kết đặt lại); app không gửi email chi gấp |
 
 ## Đồng bộ khi có thay đổi
 
@@ -250,15 +312,19 @@ F:\Design\Opendesign\2e3ad7a9-9d99-4aec-ac26-836579970b90
 ```
 
 - `index.html` chạy toàn bộ giao diện với dữ liệu mẫu qua `assets/demo-api.js` (không gọi Google Sheet).
+- `reset-password.html` là trang đặt lại mật khẩu; bản demo dùng token `demo`.
 - `screens.html` là bộ khung mobile/desktop; `components.html` là thư viện thành phần.
 - `index.html?signedout=1` xem màn hình đăng nhập; `index.html?as=luat` xem góc nhìn Luật.
-- Khi sửa giao diện trong app thật, chép `index.html`, `assets/app.js`, `assets/app.css` sang project thiết kế; đổi import trong `app.js` thành `./demo-api.js?v=...`.
+- Project design dùng **source** `assets/app.js`, `assets/app.css`; production dùng bản minified.
+- Khi sửa giao diện: sửa source trong repo app, chép `index.html`, `assets/app.js`, `assets/app.css` sang project design; đổi import trong `app.js` thành `./demo-api.js?v=...`; sau đó chạy `build.ps1` cho production.
+- CSS design có thêm style board/spec cho `screens.html`/`components.html`; CSS production đã lược các style đó.
 
 ## PWA
 
-- `manifest.json` + 3 icon; `sw.js` cache giao diện, không cache API.
+- `manifest.json` + 3 icon; `sw.js` cache shell tối thiểu (index, CSS/JS min, favicon, manifest), không cache API/icon/reset page.
+- Lần mở sau, SW trả index từ cache trước để giảm tải GitHub; khi deploy bản mới, SW cài cache mới ở lần mở kế tiếp.
 - Chỉ đăng ký service worker trên HTTPS (GitHub Pages). Localhost không đăng ký để tránh cache bản đang sửa.
-- Khi cập nhật giao diện: tăng `?v=` trong `index.html` + `app.js` + `sw.js` và đổi `CACHE` trong `sw.js`. Người dùng tải lại là nhận bản mới.
+- Khi cập nhật giao diện: chạy `build.ps1`, tăng `?v=` trong `index.html` + `reset-password.html`, đổi `CACHE`/`SHELL` trong `sw.js`. Người dùng tải lại là nhận bản mới.
 
 ## Xuất CSV
 
@@ -300,7 +366,7 @@ Tab `expenses` có 24 cột → 10 triệu ô tương đương **~400.000 dòng*
 | Email gửi đi | 100 người nhận/ngày (chỉ Quên mật khẩu) |
 | URL Fetch | 20.000/ngày — app không dùng |
 
-App chỉ dùng web app request. Mỗi 60 giây client chỉ gọi `version` (một con số, không đọc Sheet); chỉ khi version đổi mới gọi `list` đọc 6 tab và trả JSON.
+App chỉ dùng web app request. Mỗi 60 giây client chỉ gọi `version` (một con số, không đọc Sheet); chỉ khi version đổi mới gọi `list` đọc 7 tab và trả JSON.
 
 - 2 người mở 4 giờ/ngày: ~480 lần kiểm tra version/ngày + vài lần tải dữ liệu.
 - 2 người mở 8 giờ/ngày: ~960 lần kiểm tra version/ngày + vài lần tải dữ liệu.
@@ -326,7 +392,7 @@ Nếu thêm cột/tab mới, chạy **`setupSchema`** một lần trong editor. 
 | Nút Đăng nhập mờ, báo "Chưa dán URL Apps Script" | Chưa sửa `API_URL` trong `assets/api.js` |
 | "Không kết nối được Google" | Deploy chưa để **Who has access: Anyone**, hoặc mạng chặn |
 | "Google trả về dữ liệu không hợp lệ" | Đang mở nhầm URL `/dev` thay vì `/exec` |
-| "Sai tên đăng nhập hoặc mật khẩu" | Xem lại cột `login` và `password` trong tab `members` |
+| "Sai tên đăng nhập hoặc mật khẩu" | Xem lại cột `login`; nếu quên mật khẩu, dùng **Quên mật khẩu** |
 | Đăng nhập được nhưng bảng trống | Chưa có dữ liệu; thêm khoản thu đầu tiên |
 | Máy kia không thấy thay đổi | Đợi 60 giây, hoặc chuyển tab đi rồi quay lại |
 | Apps Script báo "Authorization required" | Mở Apps Script, chạy thử một hàm bất kỳ rồi Allow |
@@ -334,5 +400,8 @@ Nếu thêm cột/tab mới, chạy **`setupSchema`** một lần trong editor. 
 | Thiếu cột/tab sau khi cập nhật | Chạy `setupSchema` trong Apps Script editor |
 | Khoản vay không sửa được số tiền | Đã có lần trả/thu; xoá khoản vay rồi tạo lại |
 | Khoản chi/thu tự sinh không sửa được | Thuộc sổ vay; sửa trong tab **Vay nợ** |
+| Ghi lãi xong không thấy trong sổ thu/chi | Chọn **Cộng vào gốc** thì không tạo giao dịch tiền mặt; số còn lại tăng |
+| Số còn phải trả/thu tăng sau khi ghi lãi | Lãi đang ở chế độ **Cộng vào gốc**; xoá lần lãi nếu nhập nhầm |
+| Liên kết đặt lại báo hết hạn/đã dùng | Liên kết chỉ dùng một lần trong 15 phút; yêu cầu liên kết mới |
 | PWA không hiện nút cài | Phải mở bằng HTTPS (GitHub Pages), không dùng `file://` |
 | Sau khi cập nhật, app vẫn giao diện cũ | Xoá cache/đóng app, hoặc tăng `?v=` và `CACHE` trong `sw.js` |

@@ -169,6 +169,14 @@ export function deleteLoanPayment(id) {
   return post('deleteLoanPayment', { id: id });
 }
 
+export function saveLoanInterest(values) {
+  return post('saveLoanInterest', values);
+}
+
+export function deleteLoanInterest(loanId, id) {
+  return post('deleteLoanInterest', { loanId: loanId, id: id });
+}
+
 export function saveBudgets(budgets) {
   return post('saveBudgets', { budgets: budgets });
 }

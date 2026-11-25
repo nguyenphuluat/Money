@@ -9,10 +9,9 @@
  *        - Who has access: Anyone
  *      Copy URL kết thúc bằng /exec, dán vào assets/api.js trong web app.
  *
- * Lần chạy đầu tiên script tự tạo các tab và 2 tài khoản mặc định:
- *      minh@giadinh.vn / minh123
- *      lan@giadinh.vn  / lan123
- * Đổi mật khẩu bằng cách sửa cột "password" trong tab members.
+ * Lần chạy đầu tiên script tự tạo các tab và 2 tài khoản mặc định trong SEED_MEMBERS.
+ * Mật khẩu được lưu dạng hash trong cột "password" (không lưu plaintext).
+ * Đổi mật khẩu bằng liên kết "Quên mật khẩu" trên web app.
  * KHÔNG đổi cột "id" sau khi đã có dữ liệu (dữ liệu tham chiếu theo id).
  *
  * Sau khi cập nhật code, chạy hàm setupSchema() một lần trong editor
@@ -32,6 +31,8 @@ var TABS = {
           'createdBy', 'createdAt', 'updatedAt', 'cashId'],
   loanPayments: ['id', 'loanId', 'amount', 'date', 'note',
                  'createdBy', 'createdAt', 'cashId'],
+  loanInterests: ['id', 'loanId', 'amount', 'date', 'note', 'mode',
+                  'createdBy', 'createdAt', 'cashId'],
   budgets: ['category', 'amount', 'updatedAt', 'updatedBy']
 };
 
@@ -39,11 +40,11 @@ var EXPENSE_MANUAL_CATEGORIES = [
   'home', 'utilities', 'food', 'transport', 'shopping', 'pets',
   'health', 'education', 'gifts', 'entertainment', 'travel', 'other'
 ];
-var EXPENSE_AUTO_CATEGORIES = ['lend', 'repay'];
+var EXPENSE_AUTO_CATEGORIES = ['lend', 'repay', 'loan_interest'];
 var INCOME_MANUAL_CATEGORIES = [
   'salary', 'bonus', 'business', 'interest', 'gift', 'other_income', 'refund'
 ];
-var INCOME_AUTO_CATEGORIES = ['collect', 'borrow'];
+var INCOME_AUTO_CATEGORIES = ['collect', 'borrow', 'loan_interest'];
 var CONSUMPTION_CATEGORIES = EXPENSE_MANUAL_CATEGORIES.slice();
 
 var SEED_MEMBERS = [
@@ -52,6 +53,8 @@ var SEED_MEMBERS = [
 ];
 
 var TOKEN_DAYS = 30;
+var RESET_MINUTES = 15;
+var APP_URL = 'https://nguyenphuluat.github.io/Money/';
 
 /* ============================ HTTP ============================ */
 
@@ -105,6 +108,8 @@ var WRITE_ACTIONS = {
   deleteLoan: 1,
   addLoanPayment: 1,
   deleteLoanPayment: 1,
+  saveLoanInterest: 1,
+  deleteLoanInterest: 1,
   saveBudgets: 1,
   saveMember: 1
 };
@@ -125,6 +130,16 @@ function handle(body) {
   if (action === 'forgot') {
     ensureSheets();
     return doForgot(body.email);
+  }
+
+  if (action === 'resetPassword') {
+    ensureSheets();
+    return withLock(function () {
+      var resetRes = doResetPassword(body.token, body.password);
+      if (!resetRes) resetRes = { ok: true };
+      resetRes.v = bumpVersion();
+      return resetRes;
+    });
   }
 
   ensureSchema();
@@ -163,6 +178,8 @@ function dispatch(action, me, body) {
     case 'deleteLoan': return doDeleteLoan(me, body);
     case 'addLoanPayment': return doAddLoanPayment(me, body);
     case 'deleteLoanPayment': return doDeleteLoanPayment(me, body);
+    case 'saveLoanInterest': return doSaveLoanInterest(me, body);
+    case 'deleteLoanInterest': return doDeleteLoanInterest(me, body);
     case 'saveBudgets': return doSaveBudgets(me, body);
     case 'saveMember': return doSaveMember(me, body);
     default: return { ok: false, error: 'Hành động không hợp lệ: ' + action };
@@ -187,7 +204,7 @@ function doLogin(loginValue, password) {
     if (String(rows[i].login || '').trim().toLowerCase() === login) { row = rows[i]; break; }
   }
 
-  if (!row || String(row.password) !== pass) {
+  if (!row || !verifyPassword(row.password, pass)) {
     cache.put(failKey, String(fails + 1), 600);
     throw new Error('Sai tên đăng nhập hoặc mật khẩu.');
   }
@@ -219,22 +236,64 @@ function doForgot(emailValue) {
   var key = 'forgot:' + login;
   if (cache.get(key)) return { ok: false, error: 'Vừa gửi email rồi. Thử lại sau 5 phút.' };
 
+  var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  cache.put('reset:' + token, JSON.stringify({
+    id: str(row.id),
+    ver: passVersion(row.password)
+  }), RESET_MINUTES * 60);
+
+  var resetUrl = APP_URL + 'reset-password.html?token=' + encodeURIComponent(token);
   MailApp.sendEmail({
     to: row.login,
     name: 'Sổ Chi Tiêu Gia Đình',
-    subject: 'Mật khẩu sổ chi tiêu gia đình',
+    subject: 'Đặt lại mật khẩu sổ chi tiêu gia đình',
+    body: 'Xin chào ' + str(row.name) + ',\n\nMở liên kết sau để đặt lại mật khẩu (chỉ dùng một lần, hết hạn sau ' + RESET_MINUTES + ' phút):\n' + resetUrl + '\n\nNếu không phải bạn yêu cầu, hãy bỏ qua email này.',
     htmlBody:
       '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#0F172A">' +
       '<p>Xin chào <b>' + escapeHtml(row.name) + '</b>,</p>' +
-      '<p>Mật khẩu đăng nhập sổ chi tiêu của bạn là:</p>' +
-      '<p style="font-size:22px;font-weight:700;letter-spacing:1px;background:#F0FDFA;padding:12px 16px;border-radius:10px;display:inline-block">' + escapeHtml(row.password) + '</p>' +
-      '<p>Mở sổ tại <a href="https://nguyenphuluat.github.io/Money/">https://nguyenphuluat.github.io/Money/</a>.</p>' +
-      '<p style="color:#64748B">Nếu không phải bạn yêu cầu, hãy bỏ qua email này và đổi mật khẩu trong tab <b>members</b>.</p>' +
+      '<p>Bạn vừa yêu cầu đặt lại mật khẩu sổ chi tiêu gia đình. Bấm nút bên dưới để tạo mật khẩu mới:</p>' +
+      '<p><a href="' + resetUrl + '" style="display:inline-block;background:#0F766E;color:#FFFFFF;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px">Đặt lại mật khẩu</a></p>' +
+      '<p style="color:#64748B">Liên kết chỉ dùng một lần và hết hạn sau ' + RESET_MINUTES + ' phút. Nếu không phải bạn yêu cầu, hãy bỏ qua email này; mật khẩu hiện tại không thay đổi.</p>' +
+      '<p style="color:#64748B">Mở sổ tại <a href="' + APP_URL + '">' + APP_URL + '</a>.</p>' +
       '</div>'
   });
 
   cache.put(key, '1', 300);
   return { ok: true, member: publicMember(row) };
+}
+
+function doResetPassword(tokenValue, passwordValue) {
+  var token = String(tokenValue || '').trim();
+  var pass = String(passwordValue || '');
+  if (!token) throw new Error('Liên kết đặt lại mật khẩu không hợp lệ.');
+  if (pass.length < 8) throw new Error('Mật khẩu mới cần ít nhất 8 ký tự.');
+  if (pass.length > 128) throw new Error('Mật khẩu mới quá dài.');
+
+  var cache = CacheService.getScriptCache();
+  var key = 'reset:' + token;
+  var raw = cache.get(key);
+  if (!raw) throw new Error('Liên kết đã hết hạn hoặc đã được sử dụng.');
+
+  var payload = null;
+  try { payload = JSON.parse(raw); } catch (err) { payload = null; }
+  if (!payload || !payload.id) {
+    cache.remove(key);
+    throw new Error('Liên kết đặt lại mật khẩu không hợp lệ.');
+  }
+
+  var row = memberById(payload.id);
+  if (!row) {
+    cache.remove(key);
+    throw new Error('Tài khoản không còn tồn tại.');
+  }
+  if (payload.ver !== passVersion(row.password)) {
+    cache.remove(key);
+    throw new Error('Liên kết đã hết hạn hoặc đã được sử dụng.');
+  }
+
+  updateById('members', row.id, { password: createPasswordHash(pass) });
+  cache.remove(key);
+  return { ok: true };
 }
 
 function authorizeMail() {
@@ -275,6 +334,56 @@ function getSecret() {
 function passVersion(password) {
   var sig = Utilities.computeHmacSha256Signature(String(password || ''), getSecret());
   return Utilities.base64EncodeWebSafe(sig).slice(0, 22);
+}
+
+function hashPassword(password, salt) {
+  var sig = Utilities.computeHmacSha256Signature(
+    String(salt) + ':' + String(password || ''),
+    getSecret()
+  );
+  return Utilities.base64EncodeWebSafe(sig);
+}
+
+function isHashedPassword(value) {
+  var parts = String(value || '').split('$');
+  return parts.length === 3 && parts[0] === 'v1' &&
+    parts[1].length >= 16 && parts[2].length >= 20;
+}
+
+function createPasswordHash(password) {
+  var salt = Utilities.getUuid().replace(/-/g, '');
+  return 'v1$' + salt + '$' + hashPassword(password, salt);
+}
+
+function safeEqual(a, b) {
+  var left = String(a || '');
+  var right = String(b || '');
+  if (left.length !== right.length) return false;
+  var diff = 0;
+  for (var i = 0; i < left.length; i++) {
+    diff |= left.charCodeAt(i) ^ right.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+function verifyPassword(stored, password) {
+  var value = String(stored || '');
+  if (isHashedPassword(value)) {
+    var parts = value.split('$');
+    return safeEqual(hashPassword(password, parts[1]), parts[2]);
+  }
+  // Dữ liệu cũ còn plaintext: cho đăng nhập một lần rồi migrateMemberPasswords() thay bằng hash.
+  return safeEqual(value, String(password || ''));
+}
+
+function migrateMemberPasswords() {
+  var rows = readRows(sheet('members'));
+  rows.forEach(function (row) {
+    if (!str(row.id)) return;
+    var value = String(row.password || '');
+    if (!value || isHashedPassword(value)) return;
+    updateById('members', row.id, { password: createPasswordHash(value) });
+  });
 }
 
 function getVersion() {
@@ -343,6 +452,8 @@ function ensureSchema() {
         sh.getRange(1, current.length + 1, 1, missing.length).setValues([missing]);
       }
     });
+
+    migrateMemberPasswords();
   } finally {
     lock.releaseLock();
   }
@@ -353,6 +464,7 @@ function ensureSheets() {
   var members = sheet('members');
   if (members.getLastRow() <= 1) {
     SEED_MEMBERS.forEach(function (r) { members.appendRow(r); });
+    migrateMemberPasswords();
   }
 }
 
@@ -577,6 +689,14 @@ function escapeHtml(value) {
 /* ============================ LIST ============================ */
 
 function doList(me) {
+  var interestRows = readRows(sheet('loanInterests'));
+  var interestsByLoan = {};
+  interestRows.forEach(function (r) {
+    var entry = mapLoanInterest(r);
+    if (!interestsByLoan[entry.loanId]) interestsByLoan[entry.loanId] = [];
+    interestsByLoan[entry.loanId].push(entry);
+  });
+
   return {
     ok: true,
     v: getVersion(),
@@ -625,8 +745,13 @@ function doList(me) {
         loanId: str(r.loanId)
       };
     }),
-    loans: readRows(sheet('loans')).map(mapLoan),
+    loans: readRows(sheet('loans')).map(function (r) {
+      var loan = mapLoan(r);
+      loan.interests = interestsByLoan[loan.id] || [];
+      return loan;
+    }),
     loanPayments: readRows(sheet('loanPayments')).map(mapLoanPayment),
+    loanInterests: interestRows.map(mapLoanInterest),
     budgets: readRows(sheet('budgets')).map(function (r) {
       return {
         category: str(r.category),
@@ -952,6 +1077,20 @@ function mapLoanPayment(r) {
   };
 }
 
+function mapLoanInterest(r) {
+  return {
+    id: str(r.id),
+    loanId: str(r.loanId),
+    amount: num(r.amount),
+    date: dayValue(r.date),
+    note: str(r.note),
+    mode: str(r.mode) === 'capitalize' ? 'capitalize' : 'pay',
+    createdBy: str(r.createdBy),
+    createdAt: isoValue(r.createdAt),
+    cashId: str(r.cashId)
+  };
+}
+
 function findLoan(id) {
   var rows = readRows(sheet('loans'));
   for (var i = 0; i < rows.length; i++) {
@@ -976,6 +1115,32 @@ function loanPayments(loanId) {
 
 function loanPaid(loanId) {
   return loanPayments(loanId).reduce(function (s, p) { return s + num(p.amount); }, 0);
+}
+
+function findLoanInterest(id) {
+  var rows = readRows(sheet('loanInterests'));
+  for (var i = 0; i < rows.length; i++) {
+    if (str(rows[i].id) === String(id)) return rows[i];
+  }
+  return null;
+}
+
+function loanInterests(loanId) {
+  return readRows(sheet('loanInterests')).filter(function (r) {
+    return str(r.loanId) === String(loanId);
+  });
+}
+
+function loanInterestTotal(loanId, mode) {
+  return loanInterests(loanId)
+    .filter(function (r) { return str(r.mode) === mode; })
+    .reduce(function (s, r) { return s + num(r.amount); }, 0);
+}
+
+function loanPrincipal(loanId) {
+  var row = findLoan(loanId);
+  if (!row) return 0;
+  return num(row.amount) + loanInterestTotal(loanId, 'capitalize');
 }
 
 function loanType(value) {
@@ -1059,7 +1224,7 @@ function doAddLoan(me, body) {
     try { deleteIfExists(loan.type === 'lend' ? 'expenses' : 'incomes', cashId); } catch (e) { /* ignore */ }
     throw err;
   }
-  return { ok: true, loan: mapLoan(findLoan(id)) };
+  return { ok: true, loan: mapLoanWithInterests(id) };
 }
 
 function doUpdateLoan(me, body) {
@@ -1114,7 +1279,7 @@ function doUpdateLoan(me, body) {
     note: note,
     updatedAt: nowIso()
   });
-  return { ok: true, loan: mapLoan(findLoan(row.id)) };
+  return { ok: true, loan: mapLoanWithInterests(row.id) };
 }
 
 function doDeleteLoan(me, body) {
@@ -1126,6 +1291,10 @@ function doDeleteLoan(me, body) {
   payments.forEach(function (p) {
     deleteIfExists(type === 'lend' ? 'incomes' : 'expenses', str(p.cashId));
     deleteIfExists('loanPayments', str(p.id));
+  });
+  loanInterests(row.id).forEach(function (entry) {
+    deleteIfExists(type === 'lend' ? 'incomes' : 'expenses', str(entry.cashId));
+    deleteIfExists('loanInterests', str(entry.id));
   });
   deleteIfExists(type === 'lend' ? 'expenses' : 'incomes', str(row.cashId));
   deleteIfExists('loans', row.id);
@@ -1141,9 +1310,9 @@ function doAddLoanPayment(me, body) {
 
   var type = str(row.type) || 'lend';
   var person = str(row.person);
-  var mainAmount = num(row.amount);
+  var principal = num(row.amount) + loanInterestTotal(row.id, 'capitalize');
   var paid = loanPaid(row.id);
-  var remaining = mainAmount - paid;
+  var remaining = principal - paid;
   if (remaining <= 0) throw new Error('Khoản vay này đã tất toán.');
 
   var amount = cleanAmount(body.amount);
@@ -1219,7 +1388,149 @@ function doDeleteLoanPayment(me, body) {
   deleteIfExists(type === 'lend' ? 'incomes' : 'expenses', str(payment.cashId));
   deleteIfExists('loanPayments', str(payment.id));
 
-  var remaining = num(row.amount) - loanPaid(row.id);
+  var remaining = loanPrincipal(row.id) - loanPaid(row.id);
+  return { ok: true, remaining: Math.max(0, remaining) };
+}
+
+function mapLoanWithInterests(id) {
+  var row = findLoan(id);
+  if (!row) return null;
+  var loan = mapLoan(row);
+  loan.interests = loanInterests(id).map(mapLoanInterest);
+  return loan;
+}
+
+function syncLoanInterestCash(loan, entry, me) {
+  var cashId = str(entry.cashId);
+  if (entry.mode === 'capitalize') {
+    if (cashId) {
+      deleteIfExists(loan.type === 'lend' ? 'incomes' : 'expenses', cashId);
+    }
+    return '';
+  }
+
+  var owner = str(loan.createdBy) || me.id;
+  var now = str(entry.createdAt) || nowIso();
+  var newCashId = cashId || Utilities.getUuid();
+
+  if (loan.type === 'lend') {
+    var note = 'Lãi cho vay ' + str(loan.person) + (entry.note ? ' · ' + entry.note : '');
+    if (cashId && findIncome(cashId)) {
+      updateById('incomes', cashId, {
+        amount: entry.amount,
+        date: entry.date,
+        member: owner,
+        note: note,
+        category: 'loan_interest',
+        loanId: loan.id
+      });
+    } else {
+      appendObject('incomes', {
+        id: newCashId,
+        amount: entry.amount,
+        date: entry.date,
+        member: owner,
+        note: note,
+        createdBy: me.id,
+        createdAt: now,
+        category: 'loan_interest',
+        loanId: loan.id
+      });
+    }
+    return newCashId;
+  }
+
+  var reason = entry.note || 'Lãi đi vay';
+  if (cashId && findExpense(cashId)) {
+    updateById('expenses', cashId, {
+      title: 'Lãi đi vay ' + str(loan.person),
+      amount: entry.amount,
+      category: 'loan_interest',
+      reason: reason,
+      requester: owner,
+      purchasedAt: entry.date,
+      loanId: loan.id
+    });
+  } else {
+    appendObject('expenses', {
+      id: newCashId,
+      title: 'Lãi đi vay ' + str(loan.person),
+      amount: entry.amount,
+      category: 'loan_interest',
+      reason: reason,
+      requester: owner,
+      created: now,
+      status: 'purchased',
+      agreed: allAgreed(),
+      approvedAt: entry.date,
+      purchasedAt: entry.date,
+      loanId: loan.id
+    });
+  }
+  return newCashId;
+}
+
+function doSaveLoanInterest(me, body) {
+  var loan = findLoan(body.loanId);
+  if (!loan) throw new Error('Khoản vay không còn tồn tại.');
+
+  var existing = body.id ? findLoanInterest(safeId(body.id)) : null;
+  if (existing && str(existing.loanId) !== str(loan.id)) {
+    throw new Error('Lần lãi không thuộc khoản vay này.');
+  }
+
+  var record = {
+    id: existing ? str(existing.id) : Utilities.getUuid(),
+    loanId: str(loan.id),
+    amount: cleanAmount(body.amount),
+    date: loanDay(body.date || new Date(), 'lãi'),
+    note: loanNote(body.note),
+    mode: body.mode === undefined && existing
+      ? (str(existing.mode) === 'capitalize' ? 'capitalize' : 'pay')
+      : (str(body.mode) === 'capitalize' ? 'capitalize' : 'pay'),
+    createdBy: existing ? str(existing.createdBy) : me.id,
+    createdAt: existing ? str(existing.createdAt) : nowIso(),
+    cashId: existing ? str(existing.cashId) : ''
+  };
+
+  var cashId = syncLoanInterestCash(loan, record, me);
+  record.cashId = cashId;
+
+  try {
+    if (existing) {
+      updateById('loanInterests', record.id, record);
+    } else {
+      appendObject('loanInterests', record);
+    }
+  } catch (err) {
+    if (!existing && cashId) {
+      try { deleteIfExists(loan.type === 'lend' ? 'incomes' : 'expenses', cashId); } catch (e) { /* ignore */ }
+    }
+    throw err;
+  }
+
+  return {
+    ok: true,
+    interest: mapLoanInterest(findLoanInterest(record.id)),
+    loan: mapLoanWithInterests(loan.id)
+  };
+}
+
+function doDeleteLoanInterest(me, body) {
+  var entry = findLoanInterest(body.id);
+  if (!entry) throw new Error('Lần lãi không còn tồn tại.');
+
+  var loan = findLoan(entry.loanId);
+  if (!loan) throw new Error('Khoản vay không còn tồn tại.');
+  if (body.loanId && str(body.loanId) !== str(loan.id)) {
+    throw new Error('Lần lãi không thuộc khoản vay này.');
+  }
+
+  var type = str(loan.type) || 'lend';
+  deleteIfExists(type === 'lend' ? 'incomes' : 'expenses', str(entry.cashId));
+  deleteIfExists('loanInterests', str(entry.id));
+
+  var remaining = loanPrincipal(loan.id) - loanPaid(loan.id);
   return { ok: true, remaining: Math.max(0, remaining) };
 }
 
