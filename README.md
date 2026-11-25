@@ -1,33 +1,54 @@
-﻿# Sổ Chi Tiêu Gia Đình
+# Sổ Chi Tiêu Gia Đình
 
 Web app quản lý thu chi cho 2 người (vợ/chồng). Giao diện lấy từ bản design OpenDesign; dữ liệu nằm trong **Google Sheet**, đọc/ghi qua **Google Apps Script**. Không Firebase, không server, không thẻ, không hoá đơn.
+
+## Tính năng
+
+- Thu nhập có phân loại: lương, thưởng, kinh doanh, lãi/đầu tư, được tặng, khác, hoàn tiền.
+- Yêu cầu chi cần **cả hai duyệt**; người gửi được tính là đã đồng ý.
+- **Chi gấp**: cả hai có thể chi ngay khi yêu cầu đang chờ duyệt. Tiền trừ ngay, gắn nhãn `Chi gấp`; người còn lại xác nhận hoặc phản đối sau. Không giới hạn số tiền, không gửi email.
+- **Huỷ sau khi đã duyệt**: cả hai đều huỷ được, bắt buộc ghi lý do.
+- **Từ chối** có ô lý do (không bắt buộc).
+- **Sổ vay chi tiết**: cho vay / đi vay, từng người, hạn trả, thu/trả một phần, quá hạn. Khoản tiền tự ghi vào sổ thu/chi.
+- **Phân loại thu/chi** và **lọc theo nhóm** cho cả hai tab.
+- **Tìm kiếm** theo tên món, lý do, ghi chú, người gửi; không phân biệt dấu.
+- **Báo cáo tháng**: thu nhập thực, chi tiêu, chênh lệch, số dư cuối tháng, so tháng trước, xu hướng 6 tháng, theo người, dòng tiền vay.
+- **Ngân sách theo nhóm**: hạn mức tháng, thanh % và cảnh báo gần/vượt.
+- **Xuất CSV** thủ công (thu nhập, chi tiêu, vay nợ), không cần Google Drive.
+- **PWA**: cài lên màn hình chính, có icon và cache giao diện.
 
 ## Kiến trúc
 
 ```
-Web app (GitHub Pages hoặc localhost)
+Web app (GitHub Pages)
     │  fetch (JSON, kèm token)
     ▼
 Google Apps Script Web App  ──  Google Sheet
     - kiểm tra đăng nhập           members
     - khoá ghi (LockService)       incomes
     - trả JSON                     expenses
+                                   loans
+                                   loanPayments
+                                   budgets
 ```
 
 - Không realtime: app chỉ hỏi **version** mỗi 60 giây; dữ liệu chỉ tải khi version đổi. Quay lại tab thì kiểm tra ngay.
-- Đăng nhập bằng tài khoản lưu trong tab `members`. Token ký HMAC, hết hạn sau 30 ngày.
-- **Bộ lọc** theo người và khoảng thời gian cho cả Thu nhập và Chi tiêu.
-- **Quên mật khẩu**: gửi mật khẩu về đúng email của tài khoản.
+- Đăng nhập bằng tài khoản lưu trong tab `members`. Token ký HMAC, hết hạn sau 30 ngày; đổi mật khẩu sẽ huỷ token cũ.
 - Mọi thao tác ghi đều có trạng thái **Đang xử lý…**, khoá nút và chống ghi trùng.
 
 ## Cấu trúc file
 
 ```
 index.html                 khung ứng dụng + các sheet/dialog
+manifest.json              khai báo PWA
+sw.js                      service worker (cache giao diện)
 assets/app.js              logic giao diện
 assets/app.css             giao diện
 assets/api.js              ⚠️ nơi dán URL Apps Script
-assets/fonts/              Be Vietnam Pro (self-host)
+assets/favicon.svg         icon trình duyệt
+assets/icon-192.png        icon PWA
+assets/icon-512.png        icon PWA
+assets/icon-maskable-512.png
 apps-script/Code.gs        backend, dán vào Apps Script
 .nojekyll                  để GitHub Pages không xử lý qua Jekyll
 ```
@@ -37,7 +58,7 @@ apps-script/Code.gs        backend, dán vào Apps Script
 ### 1. Tạo Google Sheet
 
 1. Vào <https://sheets.google.com> → tạo bảng tính mới, đặt tên "Sổ Chi Tiêu".
-2. Không cần tạo tab — script sẽ tự tạo `members`, `incomes`, `expenses` ở lần chạy đầu.
+2. Không cần tạo tab — script sẽ tự tạo `members`, `incomes`, `expenses`, `loans`, `loanPayments`, `budgets`.
 
 ### 2. Dán backend
 
@@ -75,7 +96,7 @@ cd F:\Tools\Money
 npx serve . -l 4173
 ```
 
-Mở `http://localhost:4173`. Lần chạy đầu script tự tạo 3 tab và 2 tài khoản:
+Mở `http://localhost:4173`. Lần chạy đầu script tự tạo các tab và 2 tài khoản:
 
 | Đăng nhập | Mật khẩu |
 |---|---|
@@ -92,7 +113,7 @@ Mở Google Sheet → tab `members`, sửa cột `password`. Đổi luôn `name`
 
 1. Tạo repo **public**, push toàn bộ thư mục lên nhánh `main`.
 2. Repo → **Settings → Pages** → Source: **Deploy from a branch** → `main` / `/ (root)` → Save.
-3. Mở `https://<username>.github.io/<repo>/` trên cả hai điện thoại, "Thêm vào màn hình chính".
+3. Mở `https://<username>.github.io/<repo>/` trên cả hai điện thoại. Trên Chrome/Android có nút **Cài app**; trên iPhone dùng **Thêm vào màn hình chính**.
 
 Không cần cấu hình domain gì thêm — Apps Script không kiểm tra origin.
 
@@ -105,34 +126,88 @@ Không cần cấu hình domain gì thêm — Apps Script không kiểm tra orig
 | luat | ongluatlangvang@gmail.com | Luật | Chồng | luat123 | 1 |
 | thuong | thuonglt1210@gmail.com | Thương | Vợ | thuong123 | 2 |
 
-**incomes**: `id, amount, date, member, note, createdBy, createdAt`
+**incomes**: `id, amount, date, member, note, createdBy, createdAt, category, loanId`
 
-**expenses**: `id, title, amount, category, reason, requester, created, status, agreed, approvedAt, purchasedAt, rejectedBy, rejectedAt, cancelledBy, cancelledAt`
+**expenses**: `id, title, amount, category, reason, requester, created, status, agreed, approvedAt, purchasedAt, rejectedBy, rejectedAt, cancelledBy, cancelledAt, cancelReason, rejectNote, urgent, urgentAt, urgentBy, urgentAck, urgentAckAt, urgentAckNote, loanId`
+
+**loans**: `id, type, person, amount, date, dueDate, note, createdBy, createdAt, updatedAt, cashId`
+
+**loanPayments**: `id, loanId, amount, date, note, createdBy, createdAt, cashId`
+
+**budgets**: `category, amount, updatedAt, updatedBy`
 
 - `agreed` là JSON một ô: `{"luat":true,"thuong":null}`.
 - `status`: `pending | approved | purchased | rejected | cancelled`.
+- `urgent`: `1` và `urgentAck`: `ok | no | trống`.
+- `category` của thu nhập: `salary, bonus, business, interest, gift, other_income, refund` (và `collect`, `borrow` do sổ vay tự sinh).
+- `category` của chi: `home, utilities, food, transport, shopping, pets, health, education, gifts, entertainment, travel, other` (và `lend`, `repay` do sổ vay tự sinh).
 - Số dư **không lưu**, app tính `tổng thu − tổng đã mua`, nên sửa/xoá là tự đúng lại.
 
+### Nâng cấp từ bản cũ
+
+Sau khi dán `Code.gs` mới, chạy một lần hàm **`setupSchema`** trong Apps Script editor. Hàm chỉ thêm cột/tab còn thiếu, không xoá dữ liệu cũ.
+
+- Thu nhập cũ chưa có nhóm sẽ hiện **Thu nhập khác**; sửa lại nếu muốn báo cáo đẹp.
+- Chi cũ chưa có nhóm sẽ hiện **Khác**.
+
 ## Luồng nghiệp vụ
+
+### Duyệt và mua
 
 - Người gửi được tính là đã đồng ý ngay khi tạo yêu cầu.
 - Người còn lại bấm Đồng ý → `approved`. Với 2 người chỉ cần một lần bấm.
 - Bấm "Đã mua" → `purchased`, tiền bị trừ khỏi số dư.
-- Số dư âm hiển thị `Đang vay` kèm cảnh báo đỏ.
 - Sửa yêu cầu đã duyệt → quay về `pending`, phải duyệt lại.
+
+### Chi gấp
+
+- Cả hai bấm được **Chi gấp** trên yêu cầu đang `pending`.
+- Tiền trừ ngay, `status=purchased`, `urgent=1`, ghi người chi.
+- Người còn lại thấy banner ở Tổng quan, badge trên tab Chi tiêu; bấm **Xác nhận** hoặc **Có vấn đề** (bắt buộc lý do nếu phản đối).
+- Phản đối **không hoàn tiền** — tiền đã chi thật; hai người tự sửa/xoá nếu cần.
+- Sửa số tiền sau khi đã xác nhận → xác nhận bị reset để người kia xem lại.
+
+### Huỷ và từ chối
+
+- Đang chờ: chỉ người gửi huỷ được; lý do không bắt buộc.
+- Đã duyệt (chưa mua): **cả hai** huỷ được; **bắt buộc** nhập lý do.
+- Đã mua: không huỷ; sửa/xoá theo quyền hiện tại.
+- Từ chối: người còn lại bấm Từ chối, có thể ghi lý do.
+
+### Sổ vay
+
+- **Cho vay**: tạo khoản vay → app tự ghi một khoản chi nhóm `Cho vay`, trừ số dư.
+- **Đi vay**: app tự ghi một khoản thu nhóm `Đi vay`, cộng số dư.
+- **Thu nợ / Trả nợ**: ghi từng lần, app tự sinh khoản thu/chi tương ứng.
+- Khoản tự sinh có nhãn `Khoản vay`; sửa/xoá phải vào tab **Vay nợ**, không sửa trực tiếp trong danh sách chi/thu.
+- Số tiền/ngày vay chỉ sửa được khi chưa có lần trả nào; người/hạn/ghi chú sửa được.
+- Không tính lãi, không tự nhắc; chỉ hiện cảnh báo quá hạn/sắp đến hạn trong app.
+
+### Phân loại, lọc, tìm kiếm
+
+- Thanh lọc có 3 nút: Người, Thời gian, **Nhóm**.
+- Nhóm được chia cụm: Chi tiêu / Nợ & tài sản; Thu nhập / Tiền vào khác.
+- Ô tìm kiếm lọc ngay (debounce), không phân biệt dấu; kết hợp được với mọi bộ lọc và trạng thái.
+- Nút "Xoá" xoá cả nhóm, thời gian, người và từ khoá.
+
+### Ngân sách và báo cáo
+
+- Ngân sách là hạn mức **mỗi tháng**, áp dụng lặp lại; chỉ áp cho nhóm chi tiêu, bỏ qua cho vay/trả nợ.
+- Báo cáo tách **thu nhập thực** và **tiền vào khác**, **chi tiêu** và **nợ & tài sản**; số dư cuối tháng tính đến hết tháng đang chọn.
+- Xuất CSV tải về máy, có BOM cho Excel, chặn công thức Excel.
 
 ## Chống ghi trùng và tốc độ
 
 - Khi bấm Lưu/Gửi/Đồng ý, nút bị khoá ngay và hiện spinner `Đang xử lý…`; mọi nút khác trong cùng hộp thoại/thẻ cũng bị khoá. Bấm thêm không tạo thêm bản ghi.
-- Mỗi khoản thu/chi có `id` do trình duyệt sinh ra. Server kiểm tra id: nếu đã tồn tại thì trả `ok` luôn, không ghi thêm — an toàn cả khi mạng retry.
-- Sau khi ghi thành công, app cập nhật danh sách tại chỗ (không tải lại toàn bộ), nên cảm giác nhanh hơn. Người kia thấy thay đổi khi version đổi (kiểm tra mỗi 60 giây hoặc khi quay lại tab).
-- Request có timeout 30 giây; lỗi mạng hiện toast đỏ và mở khoá nút, không treo "Đang xử lý…" mãi.
+- Mỗi khoản thu/chi/khoản vay/lần trả có `id` do trình duyệt sinh ra. Server kiểm tra id: nếu đã tồn tại thì trả `ok` luôn, không ghi thêm.
+- Sau khi ghi thành công, app cập nhật danh sách tại chỗ; người kia thấy khi version đổi.
+- Request có timeout 30 giây; lỗi mạng hiện toast đỏ và mở khoá nút.
 
 ## Bảo mật — nói thẳng
 
-- Mật khẩu nằm **plaintext** trong tab `members`, đúng như bạn muốn. Đừng bật "Anyone with the link" cho Sheet; chỉ chia sẻ với 2 người.
+- Mật khẩu nằm **plaintext** trong tab `members`. Đừng bật "Anyone with the link" cho Sheet; chỉ chia sẻ với 2 người.
 - URL `/exec` nằm trong file JS công khai. Ai biết URL vẫn **không đọc/ghi được** nếu không có mật khẩu: mọi hành động đều kiểm tra token.
-- Token ký HMAC bằng secret sinh tự động trong Script Properties, hết hạn 30 ngày.
+- Token ký HMAC bằng secret sinh tự động trong Script Properties, hết hạn 30 ngày; đổi mật khẩu huỷ token cũ.
 - Sai mật khẩu 6 lần bị khoá 10 phút.
 - Đây là mức bảo mật "đủ cho sổ gia đình", không phải ngân hàng. Đừng dùng mật khẩu bạn dùng ở chỗ khác.
 
@@ -140,12 +215,13 @@ Không cần cấu hình domain gì thêm — Apps Script không kiểm tra orig
 
 | Điều | Thực tế |
 |---|---|
-| Realtime | Không. Tối đa 60 giây mới thấy thay đổi của người kia (chỉ tải khi có thay đổi) |
-| Tốc độ | Mỗi thao tác 0,5–4 giây |
+| Realtime | Không. Tối đa 60 giây mới thấy thay đổi của người kia |
+| Tốc độ | Mỗi thao tác 0,5–4 giây; `list` đọc 6 tab |
 | Ghi đồng thời | `LockService` khoá mọi thao tác ghi |
 | Sửa tay Sheet | Được, nhưng **không xoá dòng tiêu đề**, không đổi `id`, `status` phải đúng 5 giá trị |
 | Quota Apps Script | 6 phút mỗi lần chạy, 30 lần đồng thời. App không dùng trigger định kỳ |
-| Giới hạn ô Sheet | 10 triệu ô — vài chục năm mới hết |
+| Giới hạn ô Sheet | 10 triệu ô — tab `expenses` 24 cột tương đương ~400.000 dòng |
+| Email | Chỉ dùng cho Quên mật khẩu; app không gửi email chi gấp |
 
 ## Đồng bộ khi có thay đổi
 
@@ -157,6 +233,18 @@ Không tải toàn bộ dữ liệu định kỳ. Mỗi lần ghi, backend tăng
 4. Quay lại tab hoặc cửa sổ được focus → kiểm tra ngay.
 5. Sau khi tự ghi, client lấy version từ response nên không tự trigger tải lại.
 
+## PWA
+
+- `manifest.json` + 3 icon; `sw.js` cache giao diện, không cache API.
+- Chỉ đăng ký service worker trên HTTPS (GitHub Pages). Localhost không đăng ký để tránh cache bản đang sửa.
+- Khi cập nhật giao diện: tăng `?v=` trong `index.html` + `app.js` + `sw.js` và đổi `CACHE` trong `sw.js`. Người dùng tải lại là nhận bản mới.
+
+## Xuất CSV
+
+- Nút **Xuất CSV** trong tab Báo cáo; chọn Thu nhập, Chi tiêu hoặc Vay nợ.
+- File tải về máy, không gửi lên server, không cần Google Drive.
+- Có BOM UTF-8 cho Excel; ô bắt đầu bằng `= + - @` được thêm `'` để chặn công thức.
+
 ## Giới hạn GitHub Pages & Google (2026)
 
 ### GitHub Pages
@@ -165,13 +253,11 @@ Không tải toàn bộ dữ liệu định kỳ. Mỗi lần ghi, backend tăng
 |---|---|
 | Dung lượng site | 1 GB |
 | Băng thông | **100 GB/tháng** — giới hạn mềm |
-| Build | 10 lần/giờ (deploy từ branch); không áp dụng nếu dùng GitHub Actions |
+| Build | 10 lần/giờ (deploy từ branch) |
 | Repo | Phải public với tài khoản Free |
 | Mục đích | Không dùng cho web thương mại/SaaS |
 
-Toàn bộ app chỉ **391 KB** (đã tính cả 12 file font). Một lượt mở đầu tải khoảng 300 KB; các lần sau lấy từ cache. 100 GB/tháng tương đương **~300.000 lượt mở đầu tiên/tháng** (~10.000 lượt/ngày). Hai người dùng không thể chạm tới.
-
-Nếu vượt, GitHub không gửi hoá đơn: họ có thể trả `429`, hoặc gửi email đề nghị giảm tải.
+Toàn bộ app khoảng **355 KB**, không còn font tự host; một lượt mở đầu tải khoảng 330 KB, các lần sau lấy từ cache. 100 GB/tháng tương đương hàng trăm nghìn lượt mở — hai người dùng không thể chạm tới.
 
 ### Google Sheet
 
@@ -181,7 +267,7 @@ Nếu vượt, GitHub không gửi hoá đơn: họ có thể trả `429`, hoặ
 | Ký tự mỗi ô | 50.000 |
 | Dung lượng Drive | 15 GB (miễn phí) |
 
-Tab `expenses` có 15 cột → 10 triệu ô tương đương **~666.000 dòng**. Với 2 người, vài chục năm mới tới.
+Tab `expenses` có 24 cột → 10 triệu ô tương đương **~400.000 dòng**. Với 2 người, vài chục năm mới tới.
 
 ### Google Apps Script (tài khoản Gmail)
 
@@ -190,10 +276,10 @@ Tab `expenses` có 15 cột → 10 triệu ô tương đương **~666.000 dòng*
 | Thời gian mỗi lần chạy | 6 phút |
 | Chạy đồng thời | 30 |
 | Tổng thời gian trigger/ngày | 90 phút — app **không dùng trigger** |
-| Email gửi đi | 100 người nhận/ngày (dùng cho Quên mật khẩu) |
+| Email gửi đi | 100 người nhận/ngày (chỉ Quên mật khẩu) |
 | URL Fetch | 20.000/ngày — app không dùng |
 
-App chỉ dùng web app request. Mỗi 60 giây client chỉ gọi `version` (một con số, không đọc Sheet); chỉ khi version đổi mới gọi `list` đọc 3 tab và trả JSON.
+App chỉ dùng web app request. Mỗi 60 giây client chỉ gọi `version` (một con số, không đọc Sheet); chỉ khi version đổi mới gọi `list` đọc 6 tab và trả JSON.
 
 - 2 người mở 4 giờ/ngày: ~480 lần kiểm tra version/ngày + vài lần tải dữ liệu.
 - 2 người mở 8 giờ/ngày: ~960 lần kiểm tra version/ngày + vài lần tải dữ liệu.
@@ -202,15 +288,15 @@ Ràng buộc thực tế là 6 phút/lần chạy và 30 request đồng thời 
 
 ### Theo dõi
 
-- GitHub: repo → **Insights → Traffic** (lượt xem 14 ngày gần nhất).
-- Apps Script: **Executions** (nhật ký chạy, thời gian).
+- GitHub: repo → **Insights → Traffic**.
+- Apps Script: **Executions**.
 - Google Sheet: không cần theo dõi.
 
 ## Sửa backend sau này
 
-Sửa `Code.gs` trong Apps Script → **Deploy → Manage deployments → biểu tượng bút chì → Version: New version → Deploy**. Làm vậy URL `/exec` giữ nguyên, không phải sửa `api.js`.
+Sửa `Code.gs` trong Apps Script → **Deploy → Manage deployments → biểu tượng bút chì → Version: New version → Deploy**. URL `/exec` giữ nguyên.
 
-Nếu chọn "New deployment" mỗi lần thì URL đổi, phải dán lại vào `api.js`.
+Nếu thêm cột/tab mới, chạy **`setupSchema`** một lần trong editor. Nếu chọn "New deployment" mỗi lần thì URL đổi, phải dán lại vào `api.js`.
 
 ## Lỗi thường gặp
 
@@ -221,6 +307,11 @@ Nếu chọn "New deployment" mỗi lần thì URL đổi, phải dán lại và
 | "Google trả về dữ liệu không hợp lệ" | Đang mở nhầm URL `/dev` thay vì `/exec` |
 | "Sai tên đăng nhập hoặc mật khẩu" | Xem lại cột `login` và `password` trong tab `members` |
 | Đăng nhập được nhưng bảng trống | Chưa có dữ liệu; thêm khoản thu đầu tiên |
-| Máy kia không thấy thay đổi | Đợi 60 giây, hoặc chuyển tab đi rồi quay lại để app kiểm tra version |
+| Máy kia không thấy thay đổi | Đợi 60 giây, hoặc chuyển tab đi rồi quay lại |
 | Apps Script báo "Authorization required" | Mở Apps Script, chạy thử một hàm bất kỳ rồi Allow |
 | Sửa `Code.gs` nhưng app không đổi | Chưa deploy **New version** |
+| Thiếu cột/tab sau khi cập nhật | Chạy `setupSchema` trong Apps Script editor |
+| Khoản vay không sửa được số tiền | Đã có lần trả/thu; xoá khoản vay rồi tạo lại |
+| Khoản chi/thu tự sinh không sửa được | Thuộc sổ vay; sửa trong tab **Vay nợ** |
+| PWA không hiện nút cài | Phải mở bằng HTTPS (GitHub Pages), không dùng `file://` |
+| Sau khi cập nhật, app vẫn giao diện cũ | Xoá cache/đóng app, hoặc tăng `?v=` và `CACHE` trong `sw.js` |

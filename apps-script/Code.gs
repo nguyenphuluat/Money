@@ -9,21 +9,42 @@
  *        - Who has access: Anyone
  *      Copy URL kết thúc bằng /exec, dán vào assets/api.js trong web app.
  *
- * Lần chạy đầu tiên script tự tạo 3 tab (members / incomes / expenses)
- * và 2 tài khoản mặc định:
+ * Lần chạy đầu tiên script tự tạo các tab và 2 tài khoản mặc định:
  *      minh@giadinh.vn / minh123
  *      lan@giadinh.vn  / lan123
  * Đổi mật khẩu bằng cách sửa cột "password" trong tab members.
  * KHÔNG đổi cột "id" sau khi đã có dữ liệu (dữ liệu tham chiếu theo id).
+ *
+ * Sau khi cập nhật code, chạy hàm setupSchema() một lần trong editor
+ * để thêm cột/tab mới vào Sheet hiện tại (không xoá dữ liệu cũ).
  */
 
 var TABS = {
   members: ['id', 'login', 'name', 'role', 'password', 'order'],
-  incomes: ['id', 'amount', 'date', 'member', 'note', 'createdBy', 'createdAt'],
+  incomes: ['id', 'amount', 'date', 'member', 'note', 'createdBy', 'createdAt',
+            'category', 'loanId'],
   expenses: ['id', 'title', 'amount', 'category', 'reason', 'requester', 'created',
              'status', 'agreed', 'approvedAt', 'purchasedAt', 'rejectedBy', 'rejectedAt',
-             'cancelledBy', 'cancelledAt']
+             'cancelledBy', 'cancelledAt', 'cancelReason', 'rejectNote',
+             'urgent', 'urgentAt', 'urgentBy', 'urgentAck', 'urgentAckAt', 'urgentAckNote',
+             'loanId'],
+  loans: ['id', 'type', 'person', 'amount', 'date', 'dueDate', 'note',
+          'createdBy', 'createdAt', 'updatedAt', 'cashId'],
+  loanPayments: ['id', 'loanId', 'amount', 'date', 'note',
+                 'createdBy', 'createdAt', 'cashId'],
+  budgets: ['category', 'amount', 'updatedAt', 'updatedBy']
 };
+
+var EXPENSE_MANUAL_CATEGORIES = [
+  'home', 'utilities', 'food', 'transport', 'shopping', 'pets',
+  'health', 'education', 'gifts', 'entertainment', 'travel', 'other'
+];
+var EXPENSE_AUTO_CATEGORIES = ['lend', 'repay'];
+var INCOME_MANUAL_CATEGORIES = [
+  'salary', 'bonus', 'business', 'interest', 'gift', 'other_income', 'refund'
+];
+var INCOME_AUTO_CATEGORIES = ['collect', 'borrow'];
+var CONSUMPTION_CATEGORIES = EXPENSE_MANUAL_CATEGORIES.slice();
 
 var SEED_MEMBERS = [
   ['luat', 'ongluatlangvang@gmail.com', 'Luật', 'Chồng', 'luat123', 1],
@@ -76,7 +97,15 @@ var WRITE_ACTIONS = {
   reject: 1,
   cancel: 1,
   purchase: 1,
+  urgentPurchase: 1,
+  urgentAck: 1,
   deleteExpense: 1,
+  addLoan: 1,
+  updateLoan: 1,
+  deleteLoan: 1,
+  addLoanPayment: 1,
+  deleteLoanPayment: 1,
+  saveBudgets: 1,
   saveMember: 1
 };
 
@@ -84,6 +113,7 @@ function handle(body) {
   var action = String(body.action || '');
 
   if (action === 'version') {
+    // Giữ thật nhẹ: chỉ đọc Script Properties, không đụng Sheet.
     return { ok: true, v: getVersion() };
   }
 
@@ -96,6 +126,8 @@ function handle(body) {
     ensureSheets();
     return doForgot(body.email);
   }
+
+  ensureSchema();
 
   var me = requireAuth(body.token);
 
@@ -123,7 +155,15 @@ function dispatch(action, me, body) {
     case 'reject': return doReject(me, body);
     case 'cancel': return doCancel(me, body);
     case 'purchase': return doPurchase(me, body);
+    case 'urgentPurchase': return doUrgentPurchase(me, body);
+    case 'urgentAck': return doUrgentAck(me, body);
     case 'deleteExpense': return doDeleteExpense(me, body);
+    case 'addLoan': return doAddLoan(me, body);
+    case 'updateLoan': return doUpdateLoan(me, body);
+    case 'deleteLoan': return doDeleteLoan(me, body);
+    case 'addLoanPayment': return doAddLoanPayment(me, body);
+    case 'deleteLoanPayment': return doDeleteLoanPayment(me, body);
+    case 'saveBudgets': return doSaveBudgets(me, body);
     case 'saveMember': return doSaveMember(me, body);
     default: return { ok: false, error: 'Hành động không hợp lệ: ' + action };
   }
@@ -276,23 +316,50 @@ function verifyToken(token) {
 
 /* ============================ DATA ============================ */
 
+function ensureSchema() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) throw new Error('Script phải được tạo từ Google Sheet (Extensions → Apps Script).');
+
+    Object.keys(TABS).forEach(function (name) {
+      var headers = TABS[name];
+      var sh = ss.getSheetByName(name);
+      if (!sh) {
+        sh = ss.insertSheet(name);
+        sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+        sh.setFrozenRows(1);
+        return;
+      }
+      var current = headersOf(sh);
+      if (!current.length || sh.getLastRow() === 0) {
+        sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+        sh.setFrozenRows(1);
+        return;
+      }
+      var missing = headers.filter(function (h) { return current.indexOf(h) === -1; });
+      if (missing.length) {
+        sh.getRange(1, current.length + 1, 1, missing.length).setValues([missing]);
+      }
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function ensureSheets() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (!ss) throw new Error('Script phải được tạo từ Google Sheet (Extensions → Apps Script).');
-
-  Object.keys(TABS).forEach(function (name) {
-    var sh = ss.getSheetByName(name);
-    if (!sh) sh = ss.insertSheet(name);
-    if (sh.getLastRow() === 0) {
-      sh.appendRow(TABS[name]);
-      sh.setFrozenRows(1);
-    }
-  });
-
-  var members = ss.getSheetByName('members');
+  ensureSchema();
+  var members = sheet('members');
   if (members.getLastRow() <= 1) {
     SEED_MEMBERS.forEach(function (r) { members.appendRow(r); });
   }
+}
+
+// Chạy hàm này một lần trong editor sau khi cập nhật code.
+function setupSchema() {
+  ensureSchema();
+  return 'Đã thêm cột/tab mới, dữ liệu cũ giữ nguyên.';
 }
 
 function sheet(name) {
@@ -338,6 +405,7 @@ function findRowByName(name, id) {
   var values = sh.getDataRange().getValues();
   if (values.length < 2) return -1;
   var idCol = values[0].map(String).indexOf('id');
+  if (idCol < 0) return -1;
   for (var i = 1; i < values.length; i++) {
     if (String(values[i][idCol]) === String(id)) return i + 1; // 1-based
   }
@@ -363,6 +431,13 @@ function deleteById(name, id) {
   var rowIndex = findRowByName(name, id);
   if (rowIndex < 0) throw new Error('Không tìm thấy dữ liệu cần xoá.');
   sh.deleteRow(rowIndex);
+}
+
+function deleteIfExists(name, id) {
+  if (!id) return;
+  var sh = sheet(name);
+  var rowIndex = findRowByName(name, id);
+  if (rowIndex > 0) sh.deleteRow(rowIndex);
 }
 
 function withLock(fn) {
@@ -393,12 +468,26 @@ function dayValue(v) {
   return String(v).slice(0, 10);
 }
 
+function validDay(v) {
+  var s = String(v || '');
+  return /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
 function num(v) {
   var n = Number(v);
   return isFinite(n) ? n : 0;
 }
 
 function str(v) { return v === null || v === undefined ? '' : String(v); }
+
+function isOn(v) {
+  var s = str(v).trim().toLowerCase();
+  return s === '1' || s === 'true' || s === 'yes';
+}
+
+function formatVnd(n) {
+  return String(Math.round(num(n))).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
 
 function parseAgreed(v) {
   if (v && typeof v === 'object') return v;
@@ -432,11 +521,6 @@ function memberIds() {
     .map(function (r) { return str(r.id); });
 }
 
-function requireMember(me) {
-  if (!me || !me.id) throw new Error('Chưa đăng nhập.');
-  return me.id;
-}
-
 function cleanAmount(v) {
   var n = num(v);
   if (!(n > 0)) throw new Error('Số tiền phải lớn hơn 0.');
@@ -452,6 +536,36 @@ function safeId(value) {
 function safeText(value) {
   var s = str(value);
   return /^[=+\-@]/.test(s) ? '\u200B' + s : s;
+}
+
+function manualExpenseCategory(value) {
+  var id = str(value) || 'other';
+  if (EXPENSE_MANUAL_CATEGORIES.indexOf(id) === -1) {
+    throw new Error('Nhóm chi không hợp lệ.');
+  }
+  return id;
+}
+
+function manualIncomeCategory(value) {
+  var id = str(value) || 'other_income';
+  if (INCOME_MANUAL_CATEGORIES.indexOf(id) === -1) {
+    throw new Error('Nhóm thu không hợp lệ.');
+  }
+  return id;
+}
+
+function isAutoExpenseCategory(id) {
+  return EXPENSE_AUTO_CATEGORIES.indexOf(str(id)) !== -1;
+}
+
+function isAutoIncomeCategory(id) {
+  return INCOME_AUTO_CATEGORIES.indexOf(str(id)) !== -1;
+}
+
+function allAgreed() {
+  var agreed = {};
+  memberIds().forEach(function (id) { agreed[id] = true; });
+  return JSON.stringify(agreed);
 }
 
 function escapeHtml(value) {
@@ -477,6 +591,8 @@ function doList(me) {
         date: dayValue(r.date),
         member: str(r.member),
         note: str(r.note),
+        category: str(r.category) || 'other_income',
+        loanId: str(r.loanId),
         createdBy: str(r.createdBy),
         createdAt: isoValue(r.createdAt)
       };
@@ -496,8 +612,27 @@ function doList(me) {
         purchasedAt: isoValue(r.purchasedAt),
         rejectedBy: str(r.rejectedBy),
         rejectedAt: isoValue(r.rejectedAt),
+        rejectNote: str(r.rejectNote),
         cancelledBy: str(r.cancelledBy),
-        cancelledAt: isoValue(r.cancelledAt)
+        cancelledAt: isoValue(r.cancelledAt),
+        cancelReason: str(r.cancelReason),
+        urgent: isOn(r.urgent),
+        urgentAt: isoValue(r.urgentAt),
+        urgentBy: str(r.urgentBy),
+        urgentAck: str(r.urgentAck),
+        urgentAckAt: isoValue(r.urgentAckAt),
+        urgentAckNote: str(r.urgentAckNote),
+        loanId: str(r.loanId)
+      };
+    }),
+    loans: readRows(sheet('loans')).map(mapLoan),
+    loanPayments: readRows(sheet('loanPayments')).map(mapLoanPayment),
+    budgets: readRows(sheet('budgets')).map(function (r) {
+      return {
+        category: str(r.category),
+        amount: num(r.amount),
+        updatedAt: isoValue(r.updatedAt),
+        updatedBy: str(r.updatedBy)
       };
     })
   };
@@ -519,7 +654,9 @@ function doAddIncome(me, body) {
     member: member,
     note: safeText(body.note).slice(0, 120),
     createdBy: me.id,
-    createdAt: nowIso()
+    createdAt: nowIso(),
+    category: manualIncomeCategory(body.category),
+    loanId: ''
   });
   return { ok: true };
 }
@@ -527,6 +664,9 @@ function doAddIncome(me, body) {
 function doUpdateIncome(me, body) {
   var row = findIncome(body.id);
   if (!row) throw new Error('Khoản thu không còn tồn tại.');
+  if (str(row.loanId)) throw new Error('Khoản này thuộc sổ vay, sửa trong tab Vay nợ.');
+  if (isAutoIncomeCategory(row.category)) throw new Error('Khoản này thuộc sổ vay, sửa trong tab Vay nợ.');
+
   var member = str(body.member) || str(row.member);
   if (memberIds().indexOf(member) === -1) throw new Error('Người kiếm không hợp lệ.');
 
@@ -534,13 +674,16 @@ function doUpdateIncome(me, body) {
     amount: cleanAmount(body.amount),
     date: dayValue(body.date) || dayValue(new Date()),
     member: member,
-    note: safeText(body.note).slice(0, 120)
+    note: safeText(body.note).slice(0, 120),
+    category: manualIncomeCategory(body.category)
   });
   return { ok: true };
 }
 
 function doDeleteIncome(me, body) {
-  if (!findIncome(body.id)) throw new Error('Khoản thu không còn tồn tại.');
+  var row = findIncome(body.id);
+  if (!row) throw new Error('Khoản thu không còn tồn tại.');
+  if (str(row.loanId)) throw new Error('Khoản này thuộc sổ vay, xoá trong tab Vay nợ.');
   deleteById('incomes', body.id);
   return { ok: true };
 }
@@ -579,7 +722,7 @@ function doAddExpense(me, body) {
     id: id,
     title: title.slice(0, 80),
     amount: cleanAmount(body.amount),
-    category: str(body.category) || 'other',
+    category: manualExpenseCategory(body.category),
     reason: reason.slice(0, 300),
     requester: me.id,
     created: nowIso(),
@@ -592,6 +735,8 @@ function doAddExpense(me, body) {
 function doUpdateExpense(me, body) {
   var row = findExpense(body.id);
   if (!row) throw new Error('Yêu cầu không còn tồn tại.');
+  if (str(row.loanId)) throw new Error('Khoản này thuộc sổ vay, sửa trong tab Vay nợ.');
+  if (isAutoExpenseCategory(row.category)) throw new Error('Khoản này thuộc sổ vay, sửa trong tab Vay nợ.');
   if (str(row.requester) !== me.id) throw new Error('Chỉ người gửi mới sửa được yêu cầu.');
 
   var status = str(row.status);
@@ -602,7 +747,7 @@ function doUpdateExpense(me, body) {
   var patch = {
     title: safeText(str(body.title).trim()).slice(0, 80),
     amount: cleanAmount(body.amount),
-    category: str(body.category) || 'other',
+    category: manualExpenseCategory(body.category),
     reason: safeText(str(body.reason).trim()).slice(0, 300)
   };
   if (!patch.title) throw new Error('Nhập tên món cần mua.');
@@ -614,6 +759,12 @@ function doUpdateExpense(me, body) {
     patch.status = 'pending';
     patch.agreed = JSON.stringify(agreed);
     patch.approvedAt = '';
+  }
+
+  if (isOn(row.urgent) && str(row.urgentAck)) {
+    patch.urgentAck = '';
+    patch.urgentAckAt = '';
+    patch.urgentAckNote = '';
   }
 
   updateById('expenses', body.id, patch);
@@ -648,30 +799,42 @@ function doReject(me, body) {
   var agreed = parseAgreed(row.agreed);
   agreed[me.id] = false;
 
+  var note = safeText(str(body.reason).trim()).slice(0, 200);
   var rejectedAt = nowIso();
   updateById('expenses', body.id, {
     status: 'rejected',
     agreed: JSON.stringify(agreed),
     rejectedBy: me.id,
-    rejectedAt: rejectedAt
+    rejectedAt: rejectedAt,
+    rejectNote: note
   });
-  return { ok: true, rejectedAt: rejectedAt };
+  return { ok: true, rejectedAt: rejectedAt, rejectNote: note };
 }
 
 function doCancel(me, body) {
   var row = findExpense(body.id);
   if (!row) throw new Error('Yêu cầu không còn tồn tại.');
-  if (str(row.requester) !== me.id) throw new Error('Chỉ người gửi mới huỷ được yêu cầu.');
-  if (['pending', 'approved'].indexOf(str(row.status)) === -1) {
+
+  var status = str(row.status);
+  if (status === 'pending') {
+    if (str(row.requester) !== me.id) throw new Error('Chỉ người gửi mới huỷ được yêu cầu đang chờ.');
+  } else if (status === 'approved') {
+    // Sau khi cả hai duyệt, ai cũng huỷ được nếu không cần nữa.
+  } else {
     throw new Error('Yêu cầu này không huỷ được nữa.');
   }
 
+  var reason = safeText(str(body.reason).trim()).slice(0, 200);
+  if (status === 'approved' && !reason) throw new Error('Nhập lý do huỷ.');
+
+  var cancelledAt = nowIso();
   updateById('expenses', body.id, {
     status: 'cancelled',
     cancelledBy: me.id,
-    cancelledAt: nowIso()
+    cancelledAt: cancelledAt,
+    cancelReason: reason
   });
-  return { ok: true };
+  return { ok: true, cancelledAt: cancelledAt, cancelReason: reason };
 }
 
 function doPurchase(me, body) {
@@ -687,21 +850,422 @@ function doPurchase(me, body) {
   return { ok: true, purchasedAt: purchasedAt };
 }
 
+function doUrgentPurchase(me, body) {
+  var row = findExpense(body.id);
+  if (!row) throw new Error('Yêu cầu không còn tồn tại.');
+
+  var status = str(row.status);
+  if (status === 'purchased' && isOn(row.urgent)) {
+    return {
+      ok: true,
+      duplicate: true,
+      purchasedAt: isoValue(row.purchasedAt),
+      urgentAt: isoValue(row.urgentAt)
+    };
+  }
+  if (status !== 'pending') throw new Error('Chỉ chi gấp được yêu cầu đang chờ duyệt.');
+
+  var agreed = parseAgreed(row.agreed);
+  agreed[me.id] = true;
+
+  var urgentAt = nowIso();
+  updateById('expenses', body.id, {
+    status: 'purchased',
+    purchasedAt: urgentAt,
+    urgent: '1',
+    urgentAt: urgentAt,
+    urgentBy: me.id,
+    urgentAck: '',
+    urgentAckAt: '',
+    urgentAckNote: '',
+    agreed: JSON.stringify(agreed)
+  });
+  return { ok: true, purchasedAt: urgentAt, urgentAt: urgentAt };
+}
+
+function doUrgentAck(me, body) {
+  var row = findExpense(body.id);
+  if (!row) throw new Error('Yêu cầu không còn tồn tại.');
+  if (!isOn(row.urgent) || str(row.status) !== 'purchased') {
+    throw new Error('Khoản này không phải khoản chi gấp.');
+  }
+  if (str(row.urgentBy) === me.id) throw new Error('Người chi gấp không tự xác nhận.');
+
+  var ok = body.ok === true || body.ok === 'true' || body.ok === 1 || body.ok === '1';
+  var note = safeText(str(body.note).trim()).slice(0, 200);
+  if (!ok && !note) throw new Error('Nhập lý do phản đối.');
+
+  var ackAt = nowIso();
+  var agreed = parseAgreed(row.agreed);
+  agreed[me.id] = ok;
+
+  updateById('expenses', body.id, {
+    urgentAck: ok ? 'ok' : 'no',
+    urgentAckAt: ackAt,
+    urgentAckNote: note,
+    agreed: JSON.stringify(agreed)
+  });
+  return {
+    ok: true,
+    urgentAck: ok ? 'ok' : 'no',
+    urgentAckAt: ackAt,
+    urgentAckNote: note
+  };
+}
+
 function doDeleteExpense(me, body) {
-  if (!findExpense(body.id)) throw new Error('Yêu cầu không còn tồn tại.');
+  var row = findExpense(body.id);
+  if (!row) throw new Error('Yêu cầu không còn tồn tại.');
+  if (str(row.loanId)) throw new Error('Khoản này thuộc sổ vay, xoá trong tab Vay nợ.');
   deleteById('expenses', body.id);
   return { ok: true };
+}
+
+/* =========================== LOANS ============================ */
+
+function mapLoan(r) {
+  return {
+    id: str(r.id),
+    type: str(r.type) || 'lend',
+    person: str(r.person),
+    amount: num(r.amount),
+    date: dayValue(r.date),
+    dueDate: dayValue(r.dueDate),
+    note: str(r.note),
+    createdBy: str(r.createdBy),
+    createdAt: isoValue(r.createdAt),
+    updatedAt: isoValue(r.updatedAt),
+    cashId: str(r.cashId)
+  };
+}
+
+function mapLoanPayment(r) {
+  return {
+    id: str(r.id),
+    loanId: str(r.loanId),
+    amount: num(r.amount),
+    date: dayValue(r.date),
+    note: str(r.note),
+    createdBy: str(r.createdBy),
+    createdAt: isoValue(r.createdAt),
+    cashId: str(r.cashId)
+  };
+}
+
+function findLoan(id) {
+  var rows = readRows(sheet('loans'));
+  for (var i = 0; i < rows.length; i++) {
+    if (str(rows[i].id) === String(id)) return rows[i];
+  }
+  return null;
+}
+
+function findLoanPayment(id) {
+  var rows = readRows(sheet('loanPayments'));
+  for (var i = 0; i < rows.length; i++) {
+    if (str(rows[i].id) === String(id)) return rows[i];
+  }
+  return null;
+}
+
+function loanPayments(loanId) {
+  return readRows(sheet('loanPayments')).filter(function (r) {
+    return str(r.loanId) === String(loanId);
+  });
+}
+
+function loanPaid(loanId) {
+  return loanPayments(loanId).reduce(function (s, p) { return s + num(p.amount); }, 0);
+}
+
+function loanType(value) {
+  var type = str(value);
+  if (type !== 'lend' && type !== 'borrow') throw new Error('Loại khoản vay không hợp lệ.');
+  return type;
+}
+
+function loanPerson(value) {
+  var person = safeText(str(value).trim()).slice(0, 60);
+  if (!person) throw new Error('Nhập tên người vay / cho vay.');
+  return person;
+}
+
+function loanNote(value) {
+  return safeText(str(value).trim()).slice(0, 200);
+}
+
+function loanDay(value, label) {
+  var day = dayValue(value);
+  if (!validDay(day)) throw new Error('Ngày ' + label + ' không hợp lệ.');
+  return day;
+}
+
+function buildLoanCash(loan, me) {
+  var cashId = Utilities.getUuid();
+  var now = nowIso();
+  if (loan.type === 'lend') {
+    appendObject('expenses', {
+      id: cashId,
+      title: 'Cho ' + loan.person + ' vay',
+      amount: loan.amount,
+      category: 'lend',
+      reason: loan.note || 'Khoản cho vay',
+      requester: me.id,
+      created: now,
+      status: 'purchased',
+      agreed: allAgreed(),
+      purchasedAt: loan.date,
+      loanId: loan.id
+    });
+  } else {
+    appendObject('incomes', {
+      id: cashId,
+      amount: loan.amount,
+      date: loan.date,
+      member: me.id,
+      note: 'Vay ' + loan.person + (loan.note ? ' · ' + loan.note : ''),
+      createdBy: me.id,
+      createdAt: now,
+      category: 'borrow',
+      loanId: loan.id
+    });
+  }
+  return cashId;
+}
+
+function doAddLoan(me, body) {
+  var id = safeId(body.id);
+  if (findLoan(id)) return { ok: true, duplicate: true };
+
+  var loan = {
+    id: id,
+    type: loanType(body.type),
+    person: loanPerson(body.person),
+    amount: cleanAmount(body.amount),
+    date: loanDay(body.date || new Date(), 'vay'),
+    dueDate: body.dueDate ? loanDay(body.dueDate, 'hạn trả') : '',
+    note: loanNote(body.note),
+    createdBy: me.id,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    cashId: ''
+  };
+
+  var cashId = buildLoanCash(loan, me);
+  loan.cashId = cashId;
+  try {
+    appendObject('loans', loan);
+  } catch (err) {
+    try { deleteIfExists(loan.type === 'lend' ? 'expenses' : 'incomes', cashId); } catch (e) { /* ignore */ }
+    throw err;
+  }
+  return { ok: true, loan: mapLoan(findLoan(id)) };
+}
+
+function doUpdateLoan(me, body) {
+  var row = findLoan(body.id);
+  if (!row) throw new Error('Khoản vay không còn tồn tại.');
+
+  var type = str(row.type) || 'lend';
+  var person = loanPerson(body.person === undefined ? row.person : body.person);
+  var dueDate = body.dueDate ? loanDay(body.dueDate, 'hạn trả') : '';
+  var note = loanNote(body.note === undefined ? row.note : body.note);
+  var amount = num(row.amount);
+  var date = dayValue(row.date);
+
+  if (!validDay(date)) date = dayValue(new Date());
+
+  var payments = loanPayments(row.id);
+  var newAmount = body.amount === undefined ? amount : cleanAmount(body.amount);
+  var newDate = body.date === undefined ? date : loanDay(body.date, 'vay');
+
+  if ((newAmount !== amount || newDate !== date) && payments.length) {
+    throw new Error('Đã có lần trả/thu, không sửa được số tiền hoặc ngày vay. Xoá khoản vay rồi tạo lại.');
+  }
+
+  var cashId = str(row.cashId);
+  var cash = cashId
+    ? (type === 'lend' ? findExpense(cashId) : findIncome(cashId))
+    : null;
+  if (cashId && !cash) throw new Error('Không tìm thấy khoản tiền liên kết.');
+
+  if (cashId) {
+    if (type === 'lend') {
+      updateById('expenses', cashId, {
+        title: 'Cho ' + person + ' vay',
+        reason: note || 'Khoản cho vay',
+        amount: newAmount,
+        purchasedAt: newDate
+      });
+    } else {
+      updateById('incomes', cashId, {
+        amount: newAmount,
+        date: newDate,
+        note: 'Vay ' + person + (note ? ' · ' + note : '')
+      });
+    }
+  }
+
+  updateById('loans', row.id, {
+    person: person,
+    amount: newAmount,
+    date: newDate,
+    dueDate: dueDate,
+    note: note,
+    updatedAt: nowIso()
+  });
+  return { ok: true, loan: mapLoan(findLoan(row.id)) };
+}
+
+function doDeleteLoan(me, body) {
+  var row = findLoan(body.id);
+  if (!row) throw new Error('Khoản vay không còn tồn tại.');
+
+  var type = str(row.type) || 'lend';
+  var payments = loanPayments(row.id);
+  payments.forEach(function (p) {
+    deleteIfExists(type === 'lend' ? 'incomes' : 'expenses', str(p.cashId));
+    deleteIfExists('loanPayments', str(p.id));
+  });
+  deleteIfExists(type === 'lend' ? 'expenses' : 'incomes', str(row.cashId));
+  deleteIfExists('loans', row.id);
+  return { ok: true };
+}
+
+function doAddLoanPayment(me, body) {
+  var id = safeId(body.id);
+  if (findLoanPayment(id)) return { ok: true, duplicate: true };
+
+  var row = findLoan(body.loanId);
+  if (!row) throw new Error('Khoản vay không còn tồn tại.');
+
+  var type = str(row.type) || 'lend';
+  var person = str(row.person);
+  var mainAmount = num(row.amount);
+  var paid = loanPaid(row.id);
+  var remaining = mainAmount - paid;
+  if (remaining <= 0) throw new Error('Khoản vay này đã tất toán.');
+
+  var amount = cleanAmount(body.amount);
+  if (amount > remaining) {
+    throw new Error('Số tiền vượt quá số còn lại (' + formatVnd(remaining) + ' ₫).');
+  }
+
+  var date = loanDay(body.date || new Date(), 'trả');
+  var note = loanNote(body.note);
+  var cashId = Utilities.getUuid();
+  var now = nowIso();
+
+  if (type === 'lend') {
+    appendObject('incomes', {
+      id: cashId,
+      amount: amount,
+      date: date,
+      member: me.id,
+      note: 'Thu nợ ' + person + (note ? ' · ' + note : ''),
+      createdBy: me.id,
+      createdAt: now,
+      category: 'collect',
+      loanId: row.id
+    });
+  } else {
+    appendObject('expenses', {
+      id: cashId,
+      title: 'Trả nợ ' + person,
+      amount: amount,
+      category: 'repay',
+      reason: note || 'Trả nợ',
+      requester: me.id,
+      created: now,
+      status: 'purchased',
+      agreed: allAgreed(),
+      purchasedAt: date,
+      loanId: row.id
+    });
+  }
+
+  var payment = {
+    id: id,
+    loanId: row.id,
+    amount: amount,
+    date: date,
+    note: note,
+    createdBy: me.id,
+    createdAt: now,
+    cashId: cashId
+  };
+  try {
+    appendObject('loanPayments', payment);
+  } catch (err) {
+    try { deleteIfExists(type === 'lend' ? 'incomes' : 'expenses', cashId); } catch (e) { /* ignore */ }
+    throw err;
+  }
+
+  return {
+    ok: true,
+    payment: mapLoanPayment(findLoanPayment(id)),
+    remaining: remaining - amount
+  };
+}
+
+function doDeleteLoanPayment(me, body) {
+  var payment = findLoanPayment(body.id);
+  if (!payment) throw new Error('Lần trả không còn tồn tại.');
+
+  var row = findLoan(payment.loanId);
+  if (!row) throw new Error('Khoản vay không còn tồn tại.');
+
+  var type = str(row.type) || 'lend';
+  deleteIfExists(type === 'lend' ? 'incomes' : 'expenses', str(payment.cashId));
+  deleteIfExists('loanPayments', str(payment.id));
+
+  var remaining = num(row.amount) - loanPaid(row.id);
+  return { ok: true, remaining: Math.max(0, remaining) };
+}
+
+/* =========================== BUDGETS ========================== */
+
+function doSaveBudgets(me, body) {
+  var list = body.budgets;
+  if (!Array.isArray(list)) throw new Error('Dữ liệu ngân sách không hợp lệ.');
+
+  var now = nowIso();
+  var budgetMap = {};
+  list.forEach(function (item) {
+    if (!item) return;
+    var category = str(item.category);
+    if (CONSUMPTION_CATEGORIES.indexOf(category) === -1) return;
+    var amount = Math.round(num(item.amount));
+    if (!(amount > 0)) return;
+    budgetMap[category] = amount;
+  });
+
+  var sh = sheet('budgets');
+  var headers = TABS.budgets.slice();
+  var rows = [headers];
+  Object.keys(budgetMap).forEach(function (category) {
+    rows.push([category, budgetMap[category], now, me.id]);
+  });
+
+  sh.clearContents();
+  sh.getRange(1, 1, rows.length, headers.length).setValues(rows);
+
+  return {
+    ok: true,
+    budgets: Object.keys(budgetMap).map(function (category) {
+      return { category: category, amount: budgetMap[category], updatedAt: now, updatedBy: me.id };
+    })
+  };
 }
 
 /* ========================== MEMBERS =========================== */
 
 function doSaveMember(me, body) {
   var name = str(body.name).trim();
-  if (!name) throw new Error('Tên không được để trống.');
+  if (!name) throw new Error('Nhập tên hiển thị.');
   updateById('members', me.id, {
     name: safeText(name).slice(0, 40),
     role: safeText(str(body.role).trim()).slice(0, 20)
   });
   return { ok: true, member: publicMember(memberById(me.id)) };
 }
-

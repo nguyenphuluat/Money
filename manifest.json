@@ -1,0 +1,32 @@
+{
+  "name": "Sổ Chi Tiêu Gia Đình",
+  "short_name": "Sổ Chi Tiêu",
+  "description": "Sổ chi tiêu chung cho hai người: thu nhập, yêu cầu chi, chi gấp, sổ vay và báo cáo tháng.",
+  "lang": "vi",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F6F8",
+  "theme_color": "#F4F6F8",
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

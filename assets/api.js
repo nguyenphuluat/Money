@@ -125,20 +125,52 @@ export function approve(id) {
   return post('approve', { id: id });
 }
 
-export function reject(id) {
-  return post('reject', { id: id });
+export function reject(id, reason) {
+  return post('reject', { id: id, reason: reason || '' });
 }
 
-export function cancel(id) {
-  return post('cancel', { id: id });
+export function cancel(id, reason) {
+  return post('cancel', { id: id, reason: reason || '' });
 }
 
 export function purchase(id) {
   return post('purchase', { id: id });
 }
 
+export function urgentPurchase(id) {
+  return post('urgentPurchase', { id: id });
+}
+
+export function urgentAck(id, ok, note) {
+  return post('urgentAck', { id: id, ok: !!ok, note: note || '' });
+}
+
 export function deleteExpense(id) {
   return post('deleteExpense', { id: id });
+}
+
+export function addLoan(values) {
+  return post('addLoan', values);
+}
+
+export function updateLoan(values) {
+  return post('updateLoan', values);
+}
+
+export function deleteLoan(id) {
+  return post('deleteLoan', { id: id });
+}
+
+export function addLoanPayment(values) {
+  return post('addLoanPayment', values);
+}
+
+export function deleteLoanPayment(id) {
+  return post('deleteLoanPayment', { id: id });
+}
+
+export function saveBudgets(budgets) {
+  return post('saveBudgets', { budgets: budgets });
 }
 
 export function saveMember(values) {

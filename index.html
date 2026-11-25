@@ -5,12 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex,nofollow">
   <meta name="theme-color" content="#F4F6F8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Sổ Chi Tiêu">
   <title>Sổ Chi Tiêu Gia Đình</title>
   <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/app.css?v=20261122b">
+  <link rel="stylesheet" href="assets/app.css?v=20261125b">
 </head>
 <body>
 
@@ -114,6 +120,11 @@
         <div class="field">
           <label for="incDate">Ngày nhận</label>
           <input class="input" id="incDate" name="date" type="date">
+        </div>
+        <div class="field">
+          <label for="incCategory">Nhóm thu</label>
+          <select class="input" id="incCategory" name="category"></select>
+          <p class="field-hint">Chọn nhóm gần nhất; ghi cụ thể ở ghi chú.</p>
         </div>
         <fieldset class="field">
           <legend>Người kiếm</legend>
@@ -233,7 +244,7 @@
     <div class="sheet-head">
       <div>
         <h2 id="purchaseTitle">Xác nhận đã mua</h2>
-        <p class="sheet-sub">Số dư sẽ được trừ ngay sau khi xác nhận.</p>
+        <p class="sheet-sub" id="purchaseSub">Số dư sẽ được trừ ngay sau khi xác nhận.</p>
       </div>
       <button class="btn-icon" type="button" data-close aria-label="Đóng">
         <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
@@ -241,6 +252,156 @@
     </div>
     <div class="sheet-body" id="purchaseBody"></div>
     <div class="sheet-foot" id="purchaseFoot"></div>
+  </dialog>
+
+  <!-- ===== Thêm / sửa khoản vay ===== -->
+  <dialog class="sheet" id="loanSheet" aria-labelledby="loanTitle">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div>
+        <h2 id="loanTitle">Thêm khoản vay</h2>
+        <p class="sheet-sub" id="loanSheetSub">Khoản vay sẽ tự ghi vào sổ thu/chi.</p>
+      </div>
+      <button class="btn-icon" type="button" data-close aria-label="Đóng">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <form id="loanForm" class="sheet-form" novalidate>
+      <div class="sheet-body">
+        <fieldset class="field">
+          <legend>Loại khoản vay</legend>
+          <div class="seg seg--2" id="loanTypeSeg"></div>
+        </fieldset>
+        <div class="field">
+          <label for="loanPerson">Người vay / người cho vay</label>
+          <input class="input" id="loanPerson" maxlength="60" autocomplete="off" placeholder="Ví dụ: Em Hoa" aria-describedby="loanPersonErr">
+          <p class="field-error" id="loanPersonErr" hidden></p>
+        </div>
+        <div class="field">
+          <label for="loanAmount">Số tiền</label>
+          <div class="amount-field">
+            <input id="loanAmount" inputmode="numeric" autocomplete="off" placeholder="0" aria-describedby="loanAmountErr">
+            <span class="amount-unit" aria-hidden="true">₫</span>
+          </div>
+          <p class="field-error" id="loanAmountErr" hidden></p>
+        </div>
+        <div class="filter-dates">
+          <label class="field"><span>Ngày vay</span><input class="input" id="loanDate" type="date"></label>
+          <label class="field"><span>Hạn trả <span class="opt">(không bắt buộc)</span></span><input class="input" id="loanDue" type="date"></label>
+        </div>
+        <div class="field">
+          <label for="loanNote">Ghi chú <span class="opt">(không bắt buộc)</span></label>
+          <input class="input" id="loanNote" maxlength="200" autocomplete="off" placeholder="Ví dụ: vay mua xe, hẹn cuối năm">
+        </div>
+        <div class="form-note" id="loanNotice"></div>
+      </div>
+      <div class="sheet-foot">
+        <button class="btn btn--primary btn--block" type="submit" id="loanSubmit">Thêm khoản vay</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ===== Chi tiết khoản vay ===== -->
+  <dialog class="sheet" id="loanDetailSheet" aria-labelledby="loanDetailTitle">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div>
+        <h2 id="loanDetailTitle">Khoản vay</h2>
+        <p class="sheet-sub" id="loanDetailSub"></p>
+      </div>
+      <button class="btn-icon" type="button" data-close aria-label="Đóng">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="sheet-body" id="loanDetailBody"></div>
+    <div class="sheet-foot">
+      <div class="detail-actions" id="loanDetailActions"></div>
+    </div>
+  </dialog>
+
+  <!-- ===== Ghi nhận trả / thu nợ ===== -->
+  <dialog class="sheet" id="loanPaymentSheet" aria-labelledby="loanPayTitle">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div>
+        <h2 id="loanPayTitle">Ghi nhận thu nợ</h2>
+        <p class="sheet-sub" id="loanPaySub"></p>
+      </div>
+      <button class="btn-icon" type="button" data-close aria-label="Đóng">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <form id="loanPaymentForm" class="sheet-form" novalidate>
+      <div class="sheet-body">
+        <div class="field">
+          <label for="loanPayAmount">Số tiền</label>
+          <div class="amount-field">
+            <input id="loanPayAmount" inputmode="numeric" autocomplete="off" placeholder="0" aria-describedby="loanPayAmountErr">
+            <span class="amount-unit" aria-hidden="true">₫</span>
+          </div>
+          <p class="field-error" id="loanPayAmountErr" hidden></p>
+        </div>
+        <div class="field">
+          <label for="loanPayDate">Ngày</label>
+          <input class="input" id="loanPayDate" type="date">
+        </div>
+        <div class="field">
+          <label for="loanPayNote">Ghi chú <span class="opt">(không bắt buộc)</span></label>
+          <input class="input" id="loanPayNote" maxlength="200" autocomplete="off" placeholder="Ví dụ: trả trước một nửa">
+        </div>
+      </div>
+      <div class="sheet-foot">
+        <button class="btn btn--primary btn--block" type="submit" id="loanPaySubmit">Xác nhận</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ===== Ngân sách ===== -->
+  <dialog class="sheet" id="budgetSheet" aria-labelledby="budgetTitle">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div>
+        <h2 id="budgetTitle">Ngân sách tháng</h2>
+        <p class="sheet-sub">Hạn mức dùng chung, áp dụng cho mỗi tháng. Để trống nếu không đặt.</p>
+      </div>
+      <button class="btn-icon" type="button" data-close aria-label="Đóng">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <form id="budgetForm" class="sheet-form" novalidate>
+      <div class="sheet-body" id="budgetRows"></div>
+      <div class="sheet-foot">
+        <button class="btn btn--primary btn--block" type="submit" id="budgetSubmit">Lưu ngân sách</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ===== Xuất CSV ===== -->
+  <dialog class="sheet" id="exportSheet" aria-labelledby="exportTitle">
+    <div class="sheet-grip" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div>
+        <h2 id="exportTitle">Xuất CSV</h2>
+        <p class="sheet-sub">Tải về máy để lưu hoặc mở bằng Excel. Không gửi lên đâu.</p>
+      </div>
+      <button class="btn-icon" type="button" data-close aria-label="Đóng">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="sheet-body menu-list" id="exportBody">
+      <button class="menu-row" type="button" data-act="export-income">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17.5 9.4 11l3.4 3.4L21 6"/><path d="M15 6h6v6"/></svg>
+        <span>Thu nhập</span>
+      </button>
+      <button class="menu-row" type="button" data-act="export-expense">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5h12v17l-3-1.8-3 1.8-3-1.8-3 1.8z"/><path d="M9.5 8.5h5M9.5 12.5h5"/></svg>
+        <span>Chi tiêu</span>
+      </button>
+      <button class="menu-row" type="button" data-act="export-loans">
+        <svg class="od-icon" style="--od-icon-size:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10 12 4l8.5 6"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-5h5v5"/></svg>
+        <span>Vay nợ</span>
+      </button>
+    </div>
   </dialog>
 
   <!-- ===== Tài khoản ===== -->
@@ -278,6 +439,10 @@
           <button class="seg-btn is-mini" type="button" data-act="filter-person" data-person="minh" aria-pressed="false">Minh</button>
           <button class="seg-btn is-mini" type="button" data-act="filter-person" data-person="lan" aria-pressed="false">Lan</button>
         </div>
+      </fieldset>
+      <fieldset class="field">
+        <legend>Nhóm</legend>
+        <div id="filterCategories"></div>
       </fieldset>
       <fieldset class="field">
         <legend>Khoảng thời gian</legend>
@@ -357,6 +522,11 @@
     </div>
     <div class="sheet-body">
       <p class="purchase-q" id="confirmText"></p>
+      <label class="field reason-field" id="confirmReasonField" hidden>
+        <span id="confirmReasonLabel">Lý do</span>
+        <textarea class="textarea" id="confirmReason" rows="3" maxlength="200" placeholder=""></textarea>
+        <p class="field-error" id="confirmReasonErr" hidden></p>
+      </label>
     </div>
     <div class="sheet-foot">
       <button class="btn btn--secondary" type="button" id="confirmCancel" data-close>Không, giữ lại</button>
@@ -370,6 +540,13 @@
     <p style="padding:24px;font-family:sans-serif">Trang này cần JavaScript để chạy prototype. Hãy mở bằng trình duyệt có bật JavaScript.</p>
   </noscript>
 
-  <script type="module" src="assets/app.js?v=20261122b"></script>
+  <script>
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () { /* ignore */ });
+      });
+    }
+  </script>
+  <script type="module" src="assets/app.js?v=20261125b"></script>
 </body>
 </html>
