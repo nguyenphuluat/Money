@@ -1,5 +1,5 @@
 /* Sổ Chi Tiêu Gia Đình — giao diện OpenDesign, dữ liệu Google Sheet qua Apps Script */
-import * as api from './api.js?v=20261125b';
+import * as api from './api.js?v=20261125c';
 
 (function () {
   'use strict';
@@ -3247,6 +3247,7 @@ import * as api from './api.js?v=20261125b';
       try {
         var res = await api.saveBudgets(list);
         state.data.budgets = res.budgets || [];
+        state.version = api.currentVersion() || state.version;
         closeDialog($('#budgetSheet'));
         render();
         toast('Đã lưu ngân sách');

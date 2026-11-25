@@ -1,11 +1,11 @@
 /* Sổ Chi Tiêu Gia Đình — service worker cho PWA */
-var CACHE = 'sochitieu-v20261125b';
+var CACHE = 'sochitieu-v20261125c';
 var SHELL = [
   './',
   './index.html',
-  './assets/app.css?v=20261125b',
-  './assets/app.js?v=20261125b',
-  './assets/api.js?v=20261125b',
+  './assets/app.css?v=20261125c',
+  './assets/app.js?v=20261125c',
+  './assets/api.js?v=20261125c',
   './assets/favicon.svg',
   './assets/icon-192.png',
   './assets/icon-512.png',
