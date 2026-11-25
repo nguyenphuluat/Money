@@ -1018,7 +1018,7 @@ import * as api from './api.js?v=20261127a';
     var person = filterPersonName(filter.person);
     var time = filterTimeLabel(filter);
     var cat = filterCategoryLabel(kind, filter.category);
-    return '<div class="filter-bar" role="group" aria-label="Bộ lọc">' +
+    return '<div class="filter-bar' + (kind === 'expenses' ? ' filter-bar--expenses' : '') + '" role="group" aria-label="Bộ lọc">' +
       '<button class="filter-trigger' + (filter.person !== 'all' ? ' is-active' : '') + '" type="button" data-act="open-filter" aria-haspopup="dialog" aria-label="' + filterLabel(kind) + ': ' + esc(person) + '">' +
         '<span class="filter-trigger-label">' + filterLabel(kind) + '</span>' +
         '<span class="filter-trigger-value" title="' + esc(person) + '">' + esc(person) + '</span></button>' +
@@ -2707,7 +2707,7 @@ import * as api from './api.js?v=20261127a';
       });
     }
 
-    html += '<div class="stat-row">' +
+    html += '<div class="stat-row stat-row--loans">' +
       '<article class="stat-card"><span class="stat-label">Cho vay còn thu</span>' +
       '<span class="stat-value is-income">' + money(totals.receivable) + '</span>' +
       '<span class="stat-sub">' + (totals.count - totals.closed) + ' khoản đang mở</span></article>' +
@@ -2722,7 +2722,7 @@ import * as api from './api.js?v=20261127a';
       { id: 'borrow', label: 'Đi vay' },
       { id: 'due', label: 'Đến hạn' }
     ];
-    html += '<div class="chip-rail" role="group" aria-label="Lọc khoản vay">' + filters.map(function (f) {
+    html += '<div class="chip-rail chip-rail--loans" role="group" aria-label="Lọc khoản vay">' + filters.map(function (f) {
       var count = 0;
       if (f.id === 'all') count = state.data.loans.length;
       else if (f.id === 'due') count = totals.overdue + totals.soon;
@@ -3545,7 +3545,7 @@ import * as api from './api.js?v=20261127a';
       (key !== current ? '<button class="btn btn--ghost btn--sm" type="button" data-act="report-current">Tháng này</button>' : '') +
       '</div>';
 
-    html += '<div class="stat-row">' +
+    html += '<div class="stat-row stat-row--report">' +
       '<article class="stat-card"><span class="stat-label">Thu nhập thực</span>' +
       '<span class="stat-value is-income">' + money(t.realIn) + '</span>' +
       '<span class="stat-sub">' + t.countIn + ' khoản' + (t.otherIn ? ' · vào khác ' + money(t.otherIn) : '') + '</span></article>' +
