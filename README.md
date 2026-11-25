@@ -14,6 +14,7 @@ Web app quản lý thu chi cho 2 người (vợ/chồng). Giao diện lấy từ
 - **Tìm kiếm** theo tên món, lý do, ghi chú, người gửi; không phân biệt dấu.
 - **Báo cáo tháng**: thu nhập thực, chi tiêu, chênh lệch, số dư cuối tháng, so tháng trước, xu hướng 6 tháng, theo người, dòng tiền vay.
 - **Ngân sách theo nhóm**: hạn mức tháng, thanh % và cảnh báo gần/vượt.
+- **Ẩn số dư**: mặc định chỉ hiện `••••••`; bấm icon mắt để xem trong 20 giây rồi tự ẩn. Các khoản chờ duyệt/đã duyệt vẫn hiện bình thường.
 - **Xuất CSV** thủ công (thu nhập, chi tiêu, vay nợ), không cần Google Drive.
 - **PWA**: cài lên màn hình chính, có icon và cache giao diện.
 
@@ -190,6 +191,13 @@ Sau khi dán `Code.gs` mới, chạy một lần hàm **`setupSchema`** trong Ap
 - Ô tìm kiếm lọc ngay (debounce), không phân biệt dấu; kết hợp được với mọi bộ lọc và trạng thái.
 - Nút "Xoá" xoá cả nhóm, thời gian, người và từ khoá.
 
+### Ẩn số dư
+
+- Mặc định số dư ở Tổng quan và “Số dư cuối tháng” ở Báo cáo đều đang ẩn (`••••••`).
+- Bấm icon mắt cạnh số dư để xem; sau **20 giây** tự ẩn lại. Chuyển sang tab khác hoặc ẩn cửa sổ trình duyệt cũng ẩn ngay.
+- Chỉ số dư bị ẩn. Các khoản “Chờ duyệt”, “Đã duyệt, chưa mua”, thu nhập, chi tiêu và ngân sách vẫn hiện bình thường.
+- Khi số dư âm, pill **Chi vượt thu** vẫn hiện; dòng cảnh báo số tiền chỉ hiện khi mở mắt.
+
 ### Ngân sách và báo cáo
 
 - Ngân sách là hạn mức **mỗi tháng**, áp dụng lặp lại; chỉ áp cho nhóm chi tiêu, bỏ qua cho vay/trả nợ.
@@ -232,6 +240,19 @@ Không tải toàn bộ dữ liệu định kỳ. Mỗi lần ghi, backend tăng
 3. Version khác → mới gọi `list` tải dữ liệu.
 4. Quay lại tab hoặc cửa sổ được focus → kiểm tra ngay.
 5. Sau khi tự ghi, client lấy version từ response nên không tự trigger tải lại.
+
+## Bản thiết kế OpenDesign
+
+Bản thiết kế tương tác nằm ngoài repo app, trong project OpenDesign:
+
+```
+F:\Design\Opendesign\2e3ad7a9-9d99-4aec-ac26-836579970b90
+```
+
+- `index.html` chạy toàn bộ giao diện với dữ liệu mẫu qua `assets/demo-api.js` (không gọi Google Sheet).
+- `screens.html` là bộ khung mobile/desktop; `components.html` là thư viện thành phần.
+- `index.html?signedout=1` xem màn hình đăng nhập; `index.html?as=luat` xem góc nhìn Luật.
+- Khi sửa giao diện trong app thật, chép `index.html`, `assets/app.js`, `assets/app.css` sang project thiết kế; đổi import trong `app.js` thành `./demo-api.js?v=...`.
 
 ## PWA
 

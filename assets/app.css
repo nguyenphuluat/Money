@@ -1,4 +1,4 @@
-/* Sá»• Chi TiÃªu Gia ÄÃ¬nh â€” giao diá»‡n dÃ¹ng chung */
+/* Sổ Chi Tiêu Gia Đình — giao diện dùng chung */
 
 /* ===== Layout primitives (structure only) ===== */
 @layer od-layout {
@@ -148,7 +148,7 @@
   --chart-12: #8A9A8E;
 }
 
-/* ===== Base ===== */
+/* ===== Bổ sung thành phần ===== */
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
@@ -180,7 +180,7 @@ legend { padding: 0; }
 .avatar--lan { --a: var(--avatar-lan); }
 .avatar--minh { --a: var(--avatar-minh); }
 
-/* ===== Buttons ===== */
+/* ===== Bổ sung thành phần ===== */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   min-height: 44px; padding: 0 16px;
@@ -271,7 +271,7 @@ body.is-busy { cursor: progress; }
 }
 .form-alert .od-icon { margin-top: 1px; }
 
-/* ===== Brand ===== */
+/* ===== Bổ sung thành phần ===== */
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .brand-mark {
   width: 40px; height: 40px; flex: none;
@@ -373,7 +373,7 @@ body.is-busy { cursor: progress; }
 .section-link { display: inline-flex; align-items: center; min-height: 44px; border: 0; background: transparent; padding: 0 8px; color: var(--teal); font-size: var(--text-caption); font-weight: 600; border-radius: var(--r-small); }
 .section-link:hover { background: var(--teal-tint-soft); }
 
-/* ===== Balance & stats ===== */
+/* ===== Bổ sung thành phần ===== */
 .stat-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .balance-card {
   grid-column: 1 / -1; padding: 20px; border-radius: var(--r-card);
@@ -383,6 +383,24 @@ body.is-busy { cursor: progress; }
 .balance-card.is-negative { background: linear-gradient(180deg, var(--red-ink) 0%, var(--red-deep) 100%); }
 .balance-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .balance-label { font-size: var(--text-caption); font-weight: 500; color: var(--on-brand-soft); }
+.balance-tools { display: flex; align-items: center; gap: 8px; flex: none; }
+.balance-eye {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; min-height: 40px; padding: 0;
+  border: 1px solid var(--on-brand-line); border-radius: 999px;
+  background: var(--hero-overlay); color: var(--on-brand);
+  transition: background-color .16s var(--ease), border-color .16s var(--ease), transform .16s var(--ease);
+}
+.balance-eye:hover { background: var(--hero-overlay-strong, rgba(255,255,255,.24)); border-color: var(--on-brand-soft); }
+.balance-eye:active { transform: scale(.95); }
+.balance-eye:focus-visible { outline: 2px solid var(--on-brand); outline-offset: 2px; }
+.balance-eye--stat {
+  width: 30px; height: 30px; min-height: 30px; margin-left: auto;
+  border-color: var(--line); background: var(--surface-subtle); color: var(--muted);
+}
+.balance-eye--stat:hover { background: var(--slate-bg); border-color: var(--line-strong); color: var(--ink); }
+.money-mask { font-size: .54em; letter-spacing: .14em; font-weight: 600; opacity: .88; vertical-align: .12em; }
+.balance-amount.is-masked, .stat-value.is-masked { letter-spacing: .06em; }
 .balance-amount {
   display: block; margin-top: 4px;
   font-size: clamp(30px, 8.4vw, 40px); font-weight: 600; line-height: 1.15;
@@ -883,7 +901,7 @@ dialog.sheet::backdrop { background: var(--overlay); }
 .shot--desktop iframe { width: 1440px; height: 900px; transform: scale(.55); transform-origin: 0 0; }
 .shot-foot { font-size: var(--text-caption); color: var(--muted-strong); padding-left: 2px; }
 
-/* ===== Bá»• sung thÃ nh pháº§n ===== */
+/* ===== Bổ sung thành phần ===== */
 .sheet-open { overflow: hidden; }
 .desk-only { display: none; }
 @media (min-width: 1024px) { .desk-only { display: block; } }
@@ -925,7 +943,7 @@ dialog.sheet::backdrop { background: var(--overlay); }
   .board-wrap { padding: 24px 16px 60px; }
 }
 
-/* ===== B? sung khi n?i Google Sheets ===== */
+/* ===== Bổ sung thành phần ===== */
 .avatar--c0 { --a: var(--avatar-minh); }
 .avatar--c1 { --a: var(--avatar-lan); }
 .avatar--c2 { --a: #B45309; }
@@ -1050,7 +1068,7 @@ dialog.sheet::backdrop { background: var(--overlay); }
 .budget-edit-name { display: flex; align-items: center; gap: 8px; font-size: var(--text-control); color: var(--ink-2); }
 .budget-input { width: 136px; min-height: 44px; text-align: right; font-variant-numeric: tabular-nums; }
 
-/* ===== Báo cáo ===== */
+/* ===== Bổ sung thành phần ===== */
 .report-month { display: flex; align-items: center; gap: 8px; padding: 10px 12px; margin-bottom: 12px; }
 .report-month-copy { flex: 1; display: grid; gap: 2px; text-align: center; }
 .report-month-copy span { font-size: var(--text-caption); color: var(--muted); }

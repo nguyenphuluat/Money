@@ -1,5 +1,5 @@
 /* Sổ Chi Tiêu Gia Đình — giao diện OpenDesign, dữ liệu Google Sheet qua Apps Script */
-import * as api from './api.js?v=20261125c';
+import * as api from './api.js?v=20261126a';
 
 (function () {
   'use strict';
@@ -136,6 +136,8 @@ import * as api from './api.js?v=20261125c';
     download: '<path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 20h14"/>',
     target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/>',
     wallet: '<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H19v14H6.5A2.5 2.5 0 0 1 4 16.5z"/><path d="M19 10h-5a2 2 0 0 0 0 4h5"/>',
+    eye: '<path d="M2.8 12S6.4 5.6 12 5.6 21.2 12 21.2 12 17.6 18.4 12 18.4 2.8 12 2.8 12Z"/><circle cx="12" cy="12" r="3.1"/>',
+    eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 6.3A10.9 10.9 0 0 1 12 6.2c5.6 0 9.2 5.8 9.2 5.8a17.6 17.6 0 0 1-3.4 3.6"/><path d="M6.3 6.7C3.9 8.4 2.8 12 2.8 12s3.6 6.4 9.2 6.4c1.5 0 2.8-.3 4-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
     lock: '<rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>'
   };
 
@@ -275,12 +277,79 @@ import * as api from './api.js?v=20261125c';
     loanFilter: 'all',
     reportMonth: monthKey(new Date().toISOString()),
     searchTimer: null,
+    balanceVisible: false,
+    balanceTimer: null,
     pollTimer: null,
     refreshing: false,
     lastSync: 0,
     version: null,
     checking: false
   };
+
+  var BALANCE_REVEAL_MS = 20000;
+
+  function maskedMoney() {
+    return '<span class="money-mask" aria-hidden="true">••••••</span>' +
+      '<span class="sr-only">Đang ẩn</span>';
+  }
+
+  function balanceValueHtml(value, format) {
+    if (!state.balanceVisible) return maskedMoney();
+    return format === 'signed' ? signedMoney(value) : money(value);
+  }
+
+  function balanceEyeButton(modifier) {
+    var label = state.balanceVisible ? 'Ẩn số dư' : 'Hiện số dư';
+    var cls = 'balance-eye' + (modifier ? ' ' + modifier : '');
+    return '<button class="' + cls + '" type="button" data-act="toggle-balance" ' +
+      'aria-pressed="' + (state.balanceVisible ? 'true' : 'false') + '" ' +
+      'aria-label="' + label + '" title="' + label + '">' +
+      icon(state.balanceVisible ? 'eyeOff' : 'eye', modifier ? 16 : 18) + '</button>';
+  }
+
+  function paintBalanceDom() {
+    $$('[data-balance-amount]').forEach(function (el) {
+      var value = Number(el.getAttribute('data-value') || 0);
+      var format = el.getAttribute('data-format') || 'plain';
+      el.innerHTML = balanceValueHtml(value, format);
+      el.classList.toggle('is-masked', !state.balanceVisible);
+    });
+
+    $$('[data-balance-warning]').forEach(function (el) {
+      el.hidden = !state.balanceVisible;
+    });
+
+    $$('[data-act="toggle-balance"]').forEach(function (btn) {
+      var label = state.balanceVisible ? 'Ẩn số dư' : 'Hiện số dư';
+      btn.setAttribute('aria-pressed', state.balanceVisible ? 'true' : 'false');
+      btn.setAttribute('aria-label', label);
+      btn.setAttribute('title', label);
+      btn.innerHTML = icon(
+        state.balanceVisible ? 'eyeOff' : 'eye',
+        btn.classList.contains('balance-eye--stat') ? 16 : 18
+      );
+    });
+  }
+
+  function setBalanceVisible(visible) {
+    state.balanceVisible = !!visible;
+    if (state.balanceTimer) {
+      clearTimeout(state.balanceTimer);
+      state.balanceTimer = null;
+    }
+    if (state.balanceVisible) {
+      state.balanceTimer = setTimeout(function () {
+        state.balanceTimer = null;
+        state.balanceVisible = false;
+        paintBalanceDom();
+      }, BALANCE_REVEAL_MS);
+    }
+    paintBalanceDom();
+  }
+
+  function toggleBalance() {
+    setBalanceVisible(!state.balanceVisible);
+  }
 
   function compute() {
     var data = state.data;
@@ -774,14 +843,20 @@ import * as api from './api.js?v=20261125c';
     html += '<div class="stat-row" style="margin-top:16px">';
     html += '<section class="balance-card' + (isNeg ? ' is-negative' : '') + '" aria-labelledby="balLabel">' +
       '<div class="balance-head"><span class="balance-label" id="balLabel">Số dư hiện tại</span>' +
-      (isNeg ? '<span class="pill pill--loan">' + icon('alert', 13) + 'Chi vượt thu</span>' : '') + '</div>' +
-      '<span class="balance-amount">' + signedMoney(c.balance) + '</span>' +
-      (isNeg ? '<p class="balance-warn">' + icon('alert', 15) + 'Chi vượt thu ' + money(c.balance) + '</p>' : '') +
+      '<div class="balance-tools">' +
+      (isNeg ? '<span class="pill pill--loan">' + icon('alert', 13) + 'Chi vượt thu</span>' : '') +
+      balanceEyeButton() +
+      '</div></div>' +
+      '<span class="balance-amount' + (state.balanceVisible ? '' : ' is-masked') + '" data-balance-amount data-value="' + c.balance + '" data-format="signed">' +
+      balanceValueHtml(c.balance, 'signed') + '</span>' +
+      (isNeg ? '<p class="balance-warn" data-balance-warning' + (state.balanceVisible ? '' : ' hidden') + '>' +
+        icon('alert', 15) + 'Chi vượt thu <span data-balance-amount data-value="' + c.balance + '" data-format="plain">' +
+        balanceValueHtml(c.balance, 'plain') + '</span></p>' : '') +
       (c.pending + c.approved
         ? '<div class="balance-split">' +
           '<div><span class="split-label">Chờ duyệt</span><span class="split-value">' + money(c.pending) + '</span></div>' +
           '<div><span class="split-label">Đã duyệt, chưa mua</span><span class="split-value">' + money(c.approved) + '</span></div>' +
-          '</div><p class="balance-foot">Tổng ' + money(c.pending + c.approved) + ' chưa trừ vào số dư.</p>'
+          '</div><p class="balance-foot">Tổng chưa trừ vào số dư: ' + money(c.pending + c.approved) + '</p>'
         : '<p class="balance-foot">Không có khoản nào đang chờ duyệt.</p>') +
       '</section>';
 
@@ -2299,6 +2374,11 @@ import * as api from './api.js?v=20261125c';
     state.payingLoan = null;
     state.loanType = 'lend';
     state.loanFilter = 'all';
+    state.balanceVisible = false;
+    if (state.balanceTimer) {
+      clearTimeout(state.balanceTimer);
+      state.balanceTimer = null;
+    }
     state.filter = 'all';
     state.refreshing = false;
     state.version = null;
@@ -3158,7 +3238,8 @@ import * as api from './api.js?v=20261125c';
     var prevDiff = prev.realIn - prev.spend;
 
     var html = pageHead('Báo cáo', 'Tháng ' + Number(key.split('-')[1]) + '/' + key.split('-')[0] +
-      ' · số dư cuối tháng ' + signedMoney(endBal),
+      ' · số dư cuối tháng <span data-balance-amount data-value="' + endBal + '" data-format="signed">' +
+      balanceValueHtml(endBal, 'signed') + '</span>',
       '<button class="btn btn--secondary" type="button" data-act="open-export">' + icon('download', 17) + 'Xuất CSV</button>');
 
     html += '<div class="report-month card"><button class="btn-icon" type="button" data-act="report-prev" aria-label="Tháng trước">' +
@@ -3179,8 +3260,9 @@ import * as api from './api.js?v=20261125c';
       '<article class="stat-card"><span class="stat-label">Chênh lệch</span>' +
       '<span class="stat-value ' + (diff < 0 ? 'is-expense' : 'is-income') + '">' + signedMoney(diff) + '</span>' +
       '<span class="stat-sub">Thu nhập thực − chi tiêu</span></article>' +
-      '<article class="stat-card"><span class="stat-label">Số dư cuối tháng</span>' +
-      '<span class="stat-value">' + signedMoney(endBal) + '</span>' +
+      '<article class="stat-card"><span class="stat-label">Số dư cuối tháng' + balanceEyeButton('balance-eye--stat') + '</span>' +
+      '<span class="stat-value' + (state.balanceVisible ? '' : ' is-masked') + '" data-balance-amount data-value="' + endBal + '" data-format="signed">' +
+      balanceValueHtml(endBal, 'signed') + '</span>' +
       '<span class="stat-sub">So cuối tháng trước ' + deltaText(endBal, prevEnd) + '</span></article>' +
       '</div>';
 
@@ -3550,6 +3632,7 @@ import * as api from './api.js?v=20261125c';
           break;
         case 'edit-budgets': openBudgetForm(); break;
         case 'open-export': openExportSheet(); break;
+        case 'toggle-balance': toggleBalance(); break;
         case 'export-income': exportIncomes(); break;
         case 'export-expense': exportExpenses(); break;
         case 'export-loans': exportLoans(); break;
@@ -3739,6 +3822,7 @@ import * as api from './api.js?v=20261125c';
 
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'visible' && state.loggedIn) checkForChanges(false);
+      else if (state.balanceVisible) setBalanceVisible(false);
     });
 
     window.addEventListener('focus', function () {
